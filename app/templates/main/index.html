@@ -4,14 +4,14 @@
 {% block title %}Flasky{% endblock %}
 
 {% block page_content %}
-    <div class = "container" > 
+<main role="main" class="col-md-9 ml-sm-auto col-lg-10 px-4 py-10">
+    <div class = "col-md-9 ml-sm-auto col-lg-10 px-4" > 
         <h1>Analysing data for: {{ location }} </h1> 
         <div class="comment-form">
             {{ wtf.quick_form(form) }}
         </div>
     </div>
-
-
+</main>
 {% endblock %}
 
 {% block scripts %}
