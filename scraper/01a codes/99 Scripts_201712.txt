@@ -1,0 +1,38 @@
+
+
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Domain SEED v201711 Backwards1.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Domain SEED v201711 Backwards2.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Domain SEED v201711 Backwards3.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Domain SEED v201711 Backwards4.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Domain SEED v201711 Backwards5.py"
+
+
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get RealEstate SEED v201711 Backwards1.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get RealEstate SEED v201711 Backwards2.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get RealEstate SEED v201711 Backwards3.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get RealEstate SEED v201711 Backwards4.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get RealEstate SEED v201711 Backwards5.py"
+
+
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Domain UPDATE v201711_f1.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Domain UPDATE v201711_f2.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Domain UPDATE v201711_f3.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Domain UPDATE v201711_f4.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Domain UPDATE v201711_f5.py"
+
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get RealEstate UPDATE v201711_f1.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get RealEstate UPDATE v201711_f2.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get RealEstate UPDATE v201711_f3.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get RealEstate UPDATE v201711_f4.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get RealEstate UPDATE v201711_f5.py"
+
+
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Auhouseprice RENT MASTER v201712_i1.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Auhouseprice RENT MASTER v201712_i2.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Auhouseprice RENT MASTER v201712_i3.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Auhouseprice RENT MASTER v201712_i4.py"
+python "/Users/macmac/Documents/Property/20151207 Scape Sydney/01a codes/01a Get Auhouseprice RENT MASTER v201712_i5.py"
+
+
+
+
