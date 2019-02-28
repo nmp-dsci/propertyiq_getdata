@@ -4,21 +4,20 @@
 Created on Sun Oct  8 20:12:02 2017
 
 @author: macmac
+
+Pre-requisites: 
+    (1) run all the code for Sydney Property Scrap 01a-01c
+    (2) NSW_Gov scrpe
+
+
 """
 
 ### IMPORT Libraries
 import pandas as pd
 import numpy as np
-from bs4 import BeautifulSoup
-from urllib2 import urlopen
-import re
-import time
-import os
+import re,time,os
 import multiprocessing as mp
-import matplotlib.pyplot as plt
-import time
-import datetime
-import math
+import time,datetime,math
 
 ## set directory
 output_directory = "/Users/macmac/Documents/Property/20151207 Scape Sydney/"
@@ -35,14 +34,29 @@ print('this Data Scrape: %s' % (dateid))
 
 #####################
 print('Pull in DATA')
-sourceDF = pd.DataFrame({'source':['domain','REA','nswgov',
-                    'auhouse_rent','auhouse_auction'],'dummy':1})
+sourceDF = pd.DataFrame({'source':[
+    'domain'
+,   'REA'
+,   'nswgov'
+,   'auhouse_rent'
+,   'auhouse_auction'
+],'dummy':1})
 
-for source in sourceDF.query('source <> "nswgov"').source:
+for source in sourceDF.query('source != "nswgov"').source:
     print(source)
     globals()[source+'_df'] = pd.read_csv(master_dir+ '/'+dateid+'_'+source+'.csv')
     print(globals()[source+'_df'].shape)
     print(globals()[source+'_df'].isnull().sum(axis=0)/globals()[source+'_df'].shape[0]*1.0)
+    for col in list(globals()[source+'_df'].columns):
+        print(col)
+        if globals()[source+'_df'][col].dtype == object:
+            globals()[source+'_df'][col] = globals()[source+'_df'][col].astype(str).str.strip('b').str.strip("'")
+            globals()[source+'_df'][col] = globals()[source+'_df'][col].str.replace('nan','')
+            globals()[source+'_df'][col] = globals()[source+'_df'][col].str.replace(',','').str.strip()
+            globals()[source+'_df'][col] = globals()[source+'_df'][col].apply(lambda x: np.NaN if x=='' else x)
+
+
+###################################
 # nsw is different
 nswgov_df = pd.read_csv("/Users/macmac/Documents/Property/20180116 NSWGOV_data/03 output_data/nswgovDF.csv" )
 
@@ -59,7 +73,11 @@ nswgov_df['street'] = nswgov_df['subdwelling_no'].apply(lambda x: str(x)+'/' if 
          ) + nswgov_df['street_no'].str.replace(' ','') + ' ' + nswgov_df['street_name']
 nswgov_df = nswgov_df.query('street==street')
 
+
+
+###################################
 ## AUHOUSE_RENT formatting
+
 auhouse_rent_df = auhouse_rent_df.rename(columns={
         'bedrooms':'beds'
     ,   'bathrooms':'baths'
@@ -67,7 +85,9 @@ auhouse_rent_df = auhouse_rent_df.rename(columns={
     ,   'ID':'auhouse_rentid'
     ,   'DateID':'dateID'
     })
+
 # for address matching
+
 auhouse_rent_df['subdwelling_no'] = auhouse_rent_df['sub0'].fillna('') +' '+ auhouse_rent_df['sub1'].fillna('')
 auhouse_rent_df['subdwelling_no'] = auhouse_rent_df['subdwelling_no'].str.strip()
 auhouse_rent_df['subdwelling_no'] = auhouse_rent_df['subdwelling_no'].apply(lambda x: x+'/' if len(x) > 0 else x)
@@ -76,9 +96,10 @@ auhouse_rent_df['street'] = auhouse_rent_df['street'].str.upper()
 auhouse_rent_df['suburb'] = auhouse_rent_df['suburb'].str.upper()
 auhouse_rent_df = auhouse_rent_df.drop_duplicates('auhouse_rentid',keep='first')
 
+
+####################################
 ### auhouse_auction_df formatting
-auhouse_auction_df = auhouse_auction_df.rename(columns = {
-        'href_street':'street'})
+auhouse_auction_df = auhouse_auction_df.rename(columns = {'href_street':'street'})
 
 auhouse_auction_df['auhouse_auctionid'] = auhouse_auction_df['href_addr'].str.extract('/(\d+)/')
 auhouse_auction_df['auhouse_auctionid'].value_counts().value_counts()
@@ -88,21 +109,27 @@ auhouse_auction_df.groupby(['auhouse_auctionid']).size().value_counts()
 
 auhouse_auction_df= auhouse_auction_df.drop_duplicates('auhouse_auctionid',keep='first')
 
-
-
 ######################
 ## Create dateID
+
 REA_df['dateID'] = pd.to_datetime(pd.to_datetime(REA_df['dateID']).dt.strftime('%Y-%m-%d'))
 domain_df['dateID'] = pd.to_datetime(pd.to_datetime(domain_df['dateID'],format='%d %b %Y').dt.strftime('%Y-%m-%d'))
 nswgov_df['dateID'] = pd.to_datetime(nswgov_df['dateID'])
 auhouse_rent_df['dateID'] = pd.to_datetime(auhouse_rent_df['dateID'])
 auhouse_auction_df['dateID'] = pd.to_datetime(auhouse_auction_df['dateID'])
 
+## 
+
+domain_df.sale_price = domain_df.sale_price.apply(lambda x: np.NaN if x in ['Price Withheld'] else x)
+
+domain_df.sale_price = domain_df.sale_price.str.replace('SOLD - ','')
+
+domain_df.sale_price = domain_df.sale_price.astype(float)
+
 ####
 print('view price coverage')
 print(domain_df['sale_price'].notnull().value_counts(normalize=True))
 print(REA_df['sale_price'].notnull().value_counts(normalize=True))
-
 
 #### View street
 print("Domain Street is null")
@@ -111,24 +138,21 @@ print("Realestate.com.au Street is null")
 REA_df['street'] = REA_df['street'].apply(lambda x: np.NaN if x=="Address available on request" else x)
 print(REA_df['street'].isnull().value_counts())
 
-
 #### Format for street formatter
 for source in sourceDF.source:
     print('Checking Address Standardisation: %s_df' % source)
     globals()[source+'_df']['street'] = globals()[source+'_df']['street'].str.upper()
     print(globals()[source+'_df']['street'].head())
 
-
-
 ##########################################
 ### Split address
 
-#addr_DF = domain_df[['domainid','street','suburb','postcode']];idcol='domainid'
-#addr_DF = realestate_df[['realestateID','street','suburb','postcode']];idcol='realestateID'
-#addr_DF = nswgov_df[['nswgovID','street','suburb','postcode']];idcol='nswgovID'
-
+# addr_DF = domain_df[['domainid','street','suburb','postcode']];idcol='domainid'
+# addr_DF = realestate_df[['realestateID','street','suburb','postcode']];idcol='realestateID'
+# addr_DF = nswgov_df[['nswgovID','street','suburb','postcode']];idcol='nswgovID'
 
 def street_formater(addr_DF = domain_df[['domainid','street','suburb','postcode']],idcol='domainid'):
+    ##
     drop_wrds = ['STREET','ROAD','AVENUE','DRIVE','PLACE','CRESCENT','CLOSE',
         'ST','PARADE','RD','AVE','WAY','GROVE','COURT','LANE','PARK','CIRCUIT',
         'HIGHWAY','CR','ST','DR','RD','AVE','AV','CL','CT','WAY','LOT']
@@ -140,11 +164,7 @@ def street_formater(addr_DF = domain_df[['domainid','street','suburb','postcode'
     street_addr = addr_DF2['street'].str.upper().str.split('/',expand=True )
     street_addr = street_addr.reset_index()
     street_addr = pd.melt(street_addr, id_vars = idcol).dropna(axis=0)
-    street_addr = pd.merge(
-                street_addr
-            ,   street_addr.groupby(idcol)['variable'].max().reset_index()
-            ,   on=[idcol]
-            ,   how='left'      )
+    street_addr = pd.merge(street_addr,street_addr.groupby(idcol)['variable'].max().reset_index(),on=[idcol],how='left')
     street_addr['max'] = (street_addr['variable_y']==street_addr['variable_x']).astype(int)
     street_addr = pd.pivot_table(
                     data = street_addr
@@ -169,25 +189,27 @@ def street_formater(addr_DF = domain_df[['domainid','street','suburb','postcode'
         street_df
     ,   street_addr.reset_index()
     ,   on =idcol
-    ,   how='inner'
-    )
+    ,   how='inner')
+    ##
+    addr_DF2.index = [x for x in range(addr_DF2.shape[0])]
     street_ms = pd.merge(
-       street_ms
+        street_ms
     ,   addr_DF2[[idcol,'suburb','postcode']]
     ,   on = idcol
-    ,   how = 'inner'
-    )
+    ,   how = 'inner')
     return street_ms
 
+
 #### files
+
 addr_domain = street_formater(domain_df[['domainid','street','suburb','postcode']],idcol='domainid')
 addr_REA = street_formater(REA_df[['REAid','street','suburb','postcode']],idcol='REAid')
 addr_nswgov = street_formater(nswgov_df[['nswgovid','street','suburb','postcode']],idcol='nswgovid')
 addr_auhouse_rent = street_formater(auhouse_rent_df[['auhouse_rentid','street','suburb','postcode']],idcol='auhouse_rentid')
 addr_auhouse_auction = street_formater(auhouse_auction_df[['auhouse_auctionid','street','suburb','postcode']],idcol='auhouse_auctionid')
 
-
 # put in override
+
 addr_domain['SubDwelling'] = addr_domain['SubDwelling'].fillna('999999')
 addr_REA['SubDwelling'] = addr_REA['SubDwelling'].fillna('999999')
 addr_nswgov['SubDwelling'] =addr_nswgov['SubDwelling'].fillna('999999')
@@ -196,13 +218,14 @@ addr_auhouse_auction['SubDwelling'] =addr_auhouse_auction['SubDwelling'].fillna(
 
 
 #### Format for street formatter
+
 addr_formats = pd.DataFrame({'column':pd.Series([],dtype=str)})
 for source in sourceDF.source:
     print('Addr_match TABLE format: addr_%s' % source)
     #fixes
-    globals()['addr_'+source]['postcode'] = globals()['addr_'+source]['postcode'].astype(int)
+    globals()['addr_'+source]['postcode'] = globals()['addr_'+source]['postcode'].astype(float)
     globals()['addr_'+source]['SubDwelling'] = globals()['addr_'+source]['SubDwelling'].str.strip()
-    globals()['addr_'+source]['SubDwelling'] = globals()['addr_'+source]['SubDwelling'].apply(lambda x: '999999' if len(x)>10 else x)
+    globals()['addr_'+source]['SubDwelling'] = globals()['addr_'+source]['SubDwelling'].fillna('999999')
     # final check for standardised formant
     df_fmt = globals()['addr_'+source].dtypes.reset_index(
             ).rename(columns={'index':'column',0:source})
@@ -216,7 +239,7 @@ for source in sourceDF.source:
 
 ### join all files
 join_cols = ['value','type_str','SubDwelling','postcode']
-matches = pd.merge(sourceDF,sourceDF,on='dummy',how='inner').query('source_x<>source_y ')
+matches = pd.merge(sourceDF,sourceDF,on='dummy',how='inner').query('source_x!=source_y ')
 matches = matches.query('source_x < source_y')
 
 
@@ -276,7 +299,6 @@ for row in range(matches.shape[0]): # row=0
 
 merge_df.to_csv(master_dir+'/'+dateid+'_dataset_matchDF.csv')
 
-
 ### FINAL MAtchfile
 merge_df.isnull().sum(axis=1).value_counts()
 
@@ -291,6 +313,7 @@ domain_1s = pd.DataFrame({
     ,   'REAid':np.NaN
     ,   'nswgovid':np.NaN
     })
+
 REA_1s = pd.DataFrame({
         'domainid':np.NaN
     ,   'REAid':np.setdiff1d(
@@ -298,6 +321,7 @@ REA_1s = pd.DataFrame({
         , merge_df['REAid'].dropna().unique())
     ,   'nswgovid':np.NaN
     })
+
 nswgov_1s = pd.DataFrame({
         'domainid':np.NaN
     ,   'REAid':np.NaN
@@ -306,12 +330,13 @@ nswgov_1s = pd.DataFrame({
         ,   merge_df['nswgovid'].dropna().unique()
         )
     })
+
 single_df = pd.concat([
            domain_1s
         ,   REA_1s
         ,   nswgov_1s
-        ],axis=0
-    )
+        ]
+    ,axis=0)
 
 print('number of row %d' % single_df.shape[0])
 for source in sourceDF.query('source not in  ["auhouse_rent","auhouse_auction"]')['source']:       # source = sourceDF['source'].iloc[2]
@@ -324,13 +349,13 @@ for source in sourceDF.query('source not in  ["auhouse_rent","auhouse_auction"]'
         ,   on=source+'id'
         ,   how='left'
         )
+
 print('Check for Missing values is Single Match DF')
 print(single_df.isnull().sum(axis=1).value_counts())
 single_df =single_df[single_df.isnull().sum(axis=1) == 4]
 
-
 print('number of row %d' % single_df.shape[0])
-merge_df = pd.concat([merge_df,single_df],axis=0)
+merge_df = pd.concat([merge_df,single_df],axis=0,sort=False)
 
 #should be a lift in singles now aka isnull==2
 merge_df.isnull().sum(axis=1).value_counts()
@@ -338,6 +363,7 @@ merge_df.isnull().sum(axis=1).value_counts()
 
 
 ###### JOIN  columns
+
 domain_cols = ['latitude','longitude','dateID','source',
                'Sale_type','sale_price',
                'baths','beds','parking','landSize','propertyType',
@@ -349,10 +375,10 @@ REA_cols = ['latitude','longitude','dateID','source',
 nswgov_cols = ['district_code','landSize','zoning',
                'sale_price','dateID',
                'postcode','suburb']
-auhouse_rent_cols = ['baths','beds','parking',
-                'latitude','longitude'
-                ]
 
+auhouse_rent_df = auhouse_rent_df.rename(columns={'price_str':'rent_price'})
+auhouse_rent_cols = ['baths','beds','parking',
+                'latitude','longitude','rent_price']
 
 
 domain_rename = dict(zip(domain_cols,['domain_'+x for x in domain_cols]))
@@ -364,6 +390,7 @@ auhouse_rent_rename = dict(zip(auhouse_rent_cols,['auhouse_rent_'+x for x in auh
 # 20171104: 1,006,768
 # 20171116: 1,504,503       (reworked for nswgov and 3 joins)
 # 20180304: 1,043,076       (enhanced all extraction and Full JOIN DATEID * SOURCE)
+# 20190202:   856,550       ( didn't run auction listing related data)
 
 fulljoin_df = merge_df
 for source in sourceDF.query('source not in ["auhouse_auction"]')['source']:       # source = sourceDF['source'].iloc[2]
@@ -371,7 +398,7 @@ for source in sourceDF.query('source not in ["auhouse_auction"]')['source']:    
     fulljoin_df = pd.merge(
         fulljoin_df
     ,   globals()[source+'_df'][[source+'id']+globals()[source+'_cols']].rename(columns=globals()[source+'_rename'])
-    ,   on = [source+'id',source+'_dateID'] if source <> 'auhouse_rent' else [source+'id']
+    ,   on = [source+'id',source+'_dateID'] if source != 'auhouse_rent' else [source+'id']
     ,   how='left'
     )
     # np.setdiff1d(globals()[source+'_df'].columns.values,globals()[source+'_cols'] )
@@ -386,7 +413,7 @@ print(fulljoin_df['match_rate'].value_counts())
 ###
 col_df = pd.Series(fulljoin_df.columns)
 col_mapping = col_df.str.replace(''+'|'.join(sourceDF.source),'').str.strip('_')
-remap_df = col_mapping.value_counts().reset_index().rename(columns={0:'n'}).query('index<>"id"')
+remap_df = col_mapping.value_counts().reset_index().rename(columns={0:'n'}).query('index!="id"')
 remap_col = remap_df.query('n > 1')['index']
 
 for value in remap_col:
@@ -400,9 +427,11 @@ for value in remap_col:
             fulljoin_df[value] = fulljoin_df[value].fillna(fulljoin_df[chg_col])
     # drop columns
     fulljoin_df = fulljoin_df.drop(chg_df,axis=1)
+
 ##
-## 20171231: 1455949
-## 20180304: 1857064 reworked now = 1,065,253
+## 20171231: 1,455,949
+## 20180304: 1,857,064 reworked now = 1,065,253
+## 20190202:   856,550
 fulljoin_df.shape
 
 print('missing Rates for FULL JOIN')
@@ -422,7 +451,10 @@ fulljoin_df['domainid'].value_counts().value_counts()
 fulljoin_df['REAid'].value_counts().value_counts()
 fulljoin_df['nswgovid'].value_counts().value_counts()
 fulljoin_df['auhouse_rentid'].value_counts().value_counts()
-fulljoin_df['auhouse_auctionid'].value_counts().value_counts()
+# fulljoin_df['auhouse_auctionid'].value_counts().value_counts()
+
+#### Ad work done from HA to clean up DF
+fulljoin_df = fulljoin_df.rename(columns={'auhouse_rent_rent_price':'rent_price'})
 
 ##
 fulljoin_df.to_csv(master_dir + '/'+dateid+ '_final_df.csv',index=False)
@@ -433,23 +465,19 @@ fulljoin_df.to_csv(master_dir + '/'+dateid+ '_final_df.csv',index=False)
 ## enhanced
 
 ## found information for auhouse_auction
-1.0* merge_df['auhouse_auctionid'].nunique()/auhouse_auction_df['auhouse_auctionid'].nunique()
-
-
+# 1.0* merge_df['auhouse_auctionid'].nunique()/auhouse_auction_df['auhouse_auctionid'].nunique()
 
 ###### Columns to pull accross for Auction data
+
 domain_cols = ['latitude','longitude',
                'baths','beds','parking','landSize','propertyType',
                'street','postcode','suburb','state']
 REA_cols = ['latitude','longitude','propertyType',
                 'baths','beds','parking']
 nswgov_cols = ['landSize']
-auhouse_rent_cols = ['baths','beds','parking',
-                'latitude','longitude'
-                ]
+auhouse_rent_cols = ['baths','beds','parking','latitude','longitude']
 
 auhouse_auction_match = merge_df.query('auhouse_auctionid==auhouse_auctionid')
-# drop dateID column
 drop_dateid = pd.Series(auhouse_auction_match.columns)
 drop_dateid = drop_dateid[drop_dateid.str.contains('dateID')]
 auhouse_auction_match = auhouse_auction_match.drop(drop_dateid,axis=1)
@@ -463,10 +491,10 @@ for source in sourceDF.query('source not in ["auhouse_auction"]')['source']:    
     ,   how='left'
     )
 
-### column the factors
+# ### column the factors
 col_df = pd.Series(auhouse_auction_match.columns)
 col_mapping = col_df.str.replace(''+'|'.join(sourceDF.source),'').str.strip('_')
-remap_df = col_mapping.value_counts().reset_index().rename(columns={0:'n'}).query('index<>"id"')
+remap_df = col_mapping.value_counts().reset_index().rename(columns={0:'n'}).query('index!="id"')
 remap_col = remap_df.query('n > 1')['index']
 
 for value in remap_col:
@@ -480,11 +508,14 @@ for value in remap_col:
             auhouse_auction_match[value] = auhouse_auction_match[value].fillna(auhouse_auction_match[chg_col])
     # drop columns
     auhouse_auction_match = auhouse_auction_match.drop(chg_df,axis=1)
+
+
+
 ##
 ## Pull to auhouse_auctionid level (dedup)
+
 auhouse_auction_match2 = auhouse_auction_match.groupby('auhouse_auctionid')[remap_col.values].max()
 auhouse_auction_match2 = auhouse_auction_match2.reset_index()
-
 
 auhouse_auction_df2 = pd.merge(
         auhouse_auction_df
@@ -495,10 +526,10 @@ auhouse_auction_df2 = pd.merge(
 
 auhouse_auction_df2['YYYYMM'] = auhouse_auction_df2['dateID'].dt.strftime('%Y%m')
 auhouse_auction_df2['match'] = auhouse_auction_df2['propertyType'].notnull().astype(int)
-auhouse_auction_df2.groupby('YYYYMM')['match'].mean().plot(kind='line')
-auhouse_auction_df2.groupby('YYYYMM')['clearance_rate'].mean().plot(kind='line')
-auhouse_auction_df2.groupby(['YYYYMM','bedrooms'])['clearance_rate'].mean().unstack('bedrooms')[[0,1,2,3,4]].plot(kind='line')
-auhouse_auction_df2.groupby(['YYYYMM','property_type'])['clearance_rate'].mean().unstack('property_type').plot(kind='line',figsize=(12,12))
+# auhouse_auction_df2.groupby('YYYYMM')['match'].mean().plot(kind='line')
+# auhouse_auction_df2.groupby('YYYYMM')['clearance_rate'].mean().plot(kind='line')
+# auhouse_auction_df2.groupby(['YYYYMM','bedrooms'])['clearance_rate'].mean().unstack('bedrooms')[[0,1,2,3,4]].plot(kind='line')
+# auhouse_auction_df2.groupby(['YYYYMM','property_type'])['clearance_rate'].mean().unstack('property_type').plot(kind='line',figsize=(12,12))
 
 
 auhouse_auction_df2.to_csv(master_dir+'/'+dateid+'_auhouse_auction_enhanced.csv')

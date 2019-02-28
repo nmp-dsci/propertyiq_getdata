@@ -3,15 +3,9 @@
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
-from urllib2 import urlopen
-import re
-import time
-import os
-import multiprocessing as mp
-import matplotlib.pyplot as plt
-import time
-import datetime
-import math
+from urllib.request import urlopen
+import re,time,os
+import time,datetime,math
 
 ## set directory
 output_directory = "/Users/macmac/Documents/Property/20151207 Scape Sydney/"
@@ -20,7 +14,7 @@ os.listdir(os.path.dirname(output_directory))
 ## Get data
 sourceid = 'REA'
 dateid =  pd.Series(os.listdir(output_directory + '01a Region href property')).str.extract('(\d{8})_').max()
-dateid = "20180722"
+dateid = "20190202"
 print (dateid)
 
 final_dir  = output_directory + '01c Property_DF'
@@ -112,7 +106,7 @@ iters = 1
 leni = len(suburb_list)
 len_iter = leni/iters
 
-rows1 = range( len_iter * 1 - len_iter ,len_iter * 1)
+rows1 = range( int(len_iter * 1 - len_iter) , int(len_iter * 1))
 #rows2 = np.setdiff1d(range(leni),  rows1)
 #rows3 = range( len_iter * 3 - len_iter ,len_iter * 3)
 #rows4 = range( len_iter * 4 - len_iter ,len_iter * 4)
@@ -142,19 +136,23 @@ for row in rows1:     # row = 0   suburb = 'allambie+heights-nsw-2100'
             #######  soup.findAll('2627339')
             ## PULL Attributes
             # verions 0 scrape
+            ## build on to this for the mapping 
             # iter 1
-            find_sold1 = pd.Series(soup.findAll("div", { "class" : 'property-card__content'}))
+            find_sold1 = pd.Series(soup.findAll("div", { "class" : 'presentation'}))
             sold_info1 = find_sold1.apply(lambda x: fields_funcs.apply(lambda f: f(x)))
             # iter 2
             find_sold2 = pd.Series(soup.findAll("div", { "class" : 'residential-card__content-wrapper'}))
             sold_info2 = find_sold2.apply(lambda x: fields_funcs_v2.apply(lambda f: f(x)))
             # iter 3
-            find_sold3 = pd.Series(soup.findAll("article", { "class" : 'results-card residential-card '}))
+            find_sold3 = pd.Series(soup.findAll("article", { "class" : 'results-card residential-card'}))
             sold_info3 = find_sold3.apply(lambda x: fields_funcs_v3.apply(lambda f: f(x)))
+            # iter 4
+            find_sold4 = pd.Series(soup.findAll("article", { "class" : 'results-card residential-card residential-card--compressed-view'}))
+            sold_info4 = find_sold4.apply(lambda x: fields_funcs_v3.apply(lambda f: f(x)))
             ## Create sold info
-            sold_info = pd.concat([sold_info1,sold_info2,sold_info3])
+            sold_info = pd.concat([sold_info1,sold_info2,sold_info3,sold_info4])
             if sold_info.shape[0]> 0:
-                sold_info = sold_info.query('href <> "missing"')
+                sold_info = sold_info.query('href != "missing"')
             # now pull the pretty dictionary with all the data at the end of the page
             if sold_info.shape[0]> 0:
                 sold_info[sourceid+'id'] = sold_info['href'].str.extract('-(\d+)')
@@ -180,7 +178,7 @@ for row in rows1:     # row = 0   suburb = 'allambie+heights-nsw-2100'
                     types = pd.Series(dict(zip(x.keys(),[str(type(x[a])) for a in x.keys()]))).reset_index().rename(columns={0:'c'})
                     types['c'] = types['c'].str.extract("'([a-z]+)'",expand=False)
                     outDF = pd.concat(
-                            [pd.DataFrame({'variable':o,'value':x[o]},index=[0]) for o in types.query('c<>"dict"')['index']]
+                            [pd.DataFrame({'variable':o,'value':x[o]},index=[0]) for o in types.query('c!="dict"')['index']]
                     ,axis=0)
                     #now dictionaries
                     for o in types.query('c=="dict"')['index']:

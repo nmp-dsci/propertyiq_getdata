@@ -10,16 +10,8 @@ Created on Mon Jun 11 20:48:00 2018
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
-from urllib2 import urlopen,HTTPError
-import re
-import time
-import os
-import multiprocessing as mp
-import matplotlib.pyplot as plt
-import time
-import datetime
-import math
-from bs4.element import Tag
+import re,time,os
+import time,datetime,math
 
 ## set directory
 output_directory = "/Users/macmac/Documents/Property/20151207 Scape Sydney/"
@@ -32,8 +24,10 @@ project_dir =  output_directory + '01b Suburb_Files/'+ sourceid +'_v' + versionI
 if os.path.exists(project_dir) ==False:
     os.mkdir(project_dir)
 
-##
+## PUll list of files that need to be placed into 1b
 files_df = os.listdir(scrape_area_dir)
+complete = list(pd.Series(os.listdir(project_dir)).str.replace('.csv','.txt'))
+files_df = np.setdiff1d(files_df,complete )
 
 for url in files_df:        # url = 'NSW_2018-06-09_p1.txt'
     print(url)
@@ -84,7 +78,7 @@ for url in files_df:        # url = 'NSW_2018-06-09_p1.txt'
     pull_fields['drop'] = pull_fields[value_cols].isnull().sum(axis=1).apply(lambda x: 1 if x==len(value_cols) else 0)
     pull_fields = pull_fields.query('drop == 0')
     # DateID fix for not sold
-    pull_fields['dateID'].loc[pull_fields.query('href_street==href_street & dateID<>dateID').index.values] = 'Not Sold'
+    pull_fields['dateID'].loc[pull_fields.query('href_street==href_street & dateID!=dateID').index.values] = 'Not Sold'
     ## identify PROPERTY
     addr_mapping = ['href_addr','href_street','dateID']
     pull_fields['drop'] = pull_fields[addr_mapping].isnull().sum(axis=1).apply(lambda x: 1 if x==0 else 0)
@@ -97,7 +91,7 @@ for url in files_df:        # url = 'NSW_2018-06-09_p1.txt'
     pull_fields = pull_fields.query('value==value')
     pull_fields['variable'] = pull_fields.groupby('href_addr').cumcount()
     var_counts = pull_fields['variable'].value_counts()
-    if sum(var_counts == listing_n) <> len(var_counts):
+    if sum(var_counts == listing_n) != len(var_counts):
         print('ERROR: cant find VALUES for every Address')
         break
     # apply column names to vlauea
@@ -111,7 +105,7 @@ for url in files_df:        # url = 'NSW_2018-06-09_p1.txt'
     pull_fields = pd.merge(pull_fields,column_mapping,on='variable',how='left')
     auction_df = pull_fields.groupby(suburb_mapping+addr_mapping+['column'])['value'].max().unstack('column').reset_index()
     ## check it all worked
-    if auction_df.shape[0] <> listing_n:
+    if auction_df.shape[0] != listing_n:
         print('ERROR: Address count doesnt Match PAGE COUNT')
         break
     #

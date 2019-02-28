@@ -2,7 +2,6 @@
 ### IMPORT Libraries
 import pandas as pd
 import numpy as np
-from bs4 import BeautifulSoup
 from urllib2 import urlopen
 import re
 import time
@@ -19,7 +18,8 @@ os.listdir(os.path.dirname(output_directory))
 
 ## Get data
 sourceid = 'REA'
-dateid =  pd.Series(os.listdir(output_directory + '01b Suburb_Files')).str.extract('(\d{8})_').max().iloc[0].astype(int).astype(str)
+dateid =  pd.Series(os.listdir(output_directory + '01b Suburb_Files')
+    ).str.extract('(\d{{8}})_{}'.format(sourceid)).dropna().max().iloc[0].astype(int).astype(str)
 print (dateid)
 
 final_dir  = output_directory + '01c Property_DF'
@@ -37,7 +37,7 @@ suburb_dir =  output_directory + '01b Suburb_Files/' + dateid +'_'+sourceid
 suburb_files = pd.DataFrame({'suburb':os.listdir(suburb_dir)})
 suburb_files['size'] = suburb_files['suburb'].apply(lambda x: os.stat(suburb_dir+'/'+x).st_size)
 # filters
-suburb_files = suburb_files.query('suburb <> ".DS_Store"  and size > 100')
+suburb_files = suburb_files.query('suburb != ".DS_Store"  and size > 100')
 
 
 master_df = pd.DataFrame()
@@ -57,14 +57,18 @@ print('Check3: Check penetration of different "variable" ')
 print(master_df.query('value == value').groupby(['key','variable']).size()/master_df.REAid.nunique())
 
 # 7.6m
+# 20190202: 16,663,573
 master_df.to_csv(final_dir  + '/'+dateid+'_'+sourceid+'_all.csv',index=False)
+
+
 # master_df = pd.read_csv(final_dir  + '/'+dateid+'_REA_all.csv')
 #####################
 ### format all column
+
 print(master_df.groupby('key').size())
 print(master_df.groupby(['key','variable']).size())
 
-master_df.query('variable=="price_img" and value <> "missing"')
+# master_df.query('variable=="price_img" and value != "missing"')
 
 
 keep_keys = ['HTML','address','constructionStatus','dateSold','features_general','price','propertyType','status']
@@ -96,11 +100,13 @@ master_df['rn'] = master_df.groupby([sourceid+'id','column']).cumcount()
 master_df = master_df.query('rn==0')
 
 # 84.7k
+## 20190202: 165,187
 master_df = master_df.pivot(index=sourceid+'id',columns='column', values='value').reset_index()
 
 ########### FORMATING For stacking
 ### RENAME FIELDS
 #master_df = pd.read_csv(master_dir+'/'+dateid+'_'+source+'.csv')
+
 rename_map = {
         "HTML__bathrooms":"baths"
     ,   "HTML__beds":"beds"
@@ -109,6 +115,7 @@ rename_map = {
     ,   "HTML__price_str":"sale_price"
     ,   "HTML__property_type":"propertyType"
     ,   "dateSold__value":"dateID"
+    ,   "HTML__href":"listing_url"
     ,   "address__latitude":"latitude"
     ,   "address__locality":"suburb"
     ,   "address__longitude":"longitude"
@@ -119,12 +126,15 @@ rename_map = {
     ,   "price__abbreviated":"price_override"
     ,   "status__label":"source"
     }
+
+
 print('CHECK No new columns not renamed')
-print(np.setdiff1d(master_df.columns , rename_map.keys()+['domainid']))
+check_not_missing = np.setdiff1d(master_df.columns , list(rename_map.keys())+['domainid'])
+# assert len(check_not_missing) == 0 , "ERROR: there are colums without rename name:\n['{}']".format("\n','".join(check_not_missing))
 
-master_df = master_df.rename(columns=rename_map)
+master_df = master_df.rename(columns=rename_map,errors='ignore')
 
-master_df = master_df[rename_map.values() + ['REAid']]
+master_df = master_df[list(rename_map.values()) + ['REAid']]
 
 #### fix price
 master_df['price_override'] = master_df['price_override'].str.lower()
@@ -134,27 +144,29 @@ def pull_price(price = '1.02m'):
     if 'k' in price:
         return float(re.sub('[a-z]','',price)) * 1000
 
-master_df['price_override'] = master_df['price_override'].apply(lambda x: pull_price(price=x) if pd.notnull(x) else x)
+master_df['price_override'] = master_df['price_override'].str.replace("'",'').apply(lambda x: pull_price(price=x) if pd.notnull(x) else x)
 master_df['sale_price'] = master_df['sale_price'].fillna(master_df['price_override'])
 
 
 master_df['sale_price'] = master_df['sale_price'].apply(lambda x: np.NaN if x=="Contact agent" else x)
 master_df['sale_price'] = master_df['sale_price'].str.replace('[$,]','')
+master_df['sale_price'] = master_df['sale_price'].str.replace("'",'').str.strip('b')
 
 ## Take the average on ranges
 def range_mean(prange = "Range: 375000 - 445000"):
     find_vars = pd.Series(re.split('\D',prange))
-    find_vars = find_vars[find_vars<>'']
+    find_vars = find_vars[find_vars!='']
     mean_var = find_vars.astype(int).mean()
     return mean_var
 
 master_df['sale_price'] = master_df['sale_price'].apply(lambda x: range_mean(prange=x) if '-' in str(x) else x)
+master_df['sale_price'] = master_df['sale_price'].apply(lambda x: np.NaN if x=='Contact agent' else x)
 master_df['sale_price'] = master_df['sale_price'].astype(float)
 
 master_df = master_df.drop(['price_override'],axis=1)
 
 ## format property type
-master_df['propertyType'] = master_df['propertyType'].str.lower()
+master_df['propertyType'] = master_df['propertyType'].str.lower().str.strip('b').str.strip("'")
 master_df['propertyType'].value_counts()
 
 apartment_vars = ['apartment','unit','studio','flat']
@@ -168,6 +180,9 @@ master_df['propertyType'] = master_df['propertyType'].apply(lambda x: 'land' if 
 
 keep_vars = ['house','apartment','semi detached','land']
 master_df['propertyType'] = master_df['propertyType'].apply(lambda x: x if x in keep_vars else 'other' )
+
+master_df['propertyType'].value_counts()
+
 
 #####################
 ## TO CSV

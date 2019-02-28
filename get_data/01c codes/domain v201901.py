@@ -2,17 +2,12 @@
 ### IMPORT Libraries
 import pandas as pd
 import numpy as np
-from bs4 import BeautifulSoup
-from urllib2 import urlopen
 import re
 import time
 import os
-import multiprocessing as mp
-import matplotlib.pyplot as plt
 import time
 import datetime
 import math
-from bs4.element import Tag
 
 ## set directory
 output_directory = "/Users/macmac/Documents/Property/20151207 Scape Sydney/"
@@ -20,7 +15,8 @@ os.listdir(os.path.dirname(output_directory))
 
 ## Get data
 sourceid = 'domain'
-dateid =  pd.Series(os.listdir(output_directory + '01a Region href property')).str.extract('(\d{8})_').max()
+dateid =  pd.Series(os.listdir(output_directory + '01a Region href property')
+    ).str.extract('(\d{{8}})_{}'.format(sourceid),expand=False).dropna().max()
 print (dateid)
 
 final_dir  = output_directory + '01c Property_DF'
@@ -37,7 +33,7 @@ suburb_dir =  output_directory + '01b Suburb_Files/' + dateid +'_'+sourceid
 suburb_files = pd.DataFrame({'suburb':os.listdir(suburb_dir)})
 suburb_files['size'] = suburb_files['suburb'].apply(lambda x: os.stat(suburb_dir+'/'+x).st_size)
 # filters
-suburb_files = suburb_files.query('suburb <> ".DS_Store"  and size > 100')
+suburb_files = suburb_files.query('suburb != ".DS_Store"  and size > 100')
 
 print('STEP 1: BUILD MASTER SET OF UPDATE')
 master_df = pd.DataFrame()
@@ -108,6 +104,7 @@ master_df = master_df.pivot(index=sourceid+'id',columns='column', values='value'
 ####### PREPARE for STACKING
 ### RENAME FIELDS
 #master_df = pd.read_csv(master_dir+'/'+dateid+'_domain.csv')
+
 rename_map = {
         "address__lat":"latitude"
     ,   "address__lng":"longitude"
@@ -120,12 +117,14 @@ rename_map = {
     ,   "features__landSize":"landSize"
     ,   "features__parking":"parking"
     ,   "features__propertyType":"propertyType"
+    ,   "features__isRural":"isRural"
+    ,   "features__landUnit":"landUnit"
     ,   "price__price":"sale_price"
     ,   "tags__tagClassName":"source"
     ,   "tags__tagText":"dateID"
     }
 print('CHECK No new columns not renamed')
-print(np.setdiff1d(master_df.columns , rename_map.keys()+[sourceid+'id']))
+print(np.setdiff1d(master_df.columns , list(rename_map.keys())+[sourceid+'id']))
 
 master_df = master_df.rename(columns=rename_map)
 
@@ -155,8 +154,6 @@ master_df['propertyType'] = master_df['propertyType'].apply(lambda x: 'land' if 
 
 keep_vars = ['house','apartment','semi detached','land']
 master_df['propertyType'] = master_df['propertyType'].apply(lambda x: x if x in keep_vars else 'other' )
-
-
 
 #####################
 ## TO CSV

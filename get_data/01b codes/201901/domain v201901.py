@@ -3,13 +3,8 @@
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
-from urllib2 import urlopen
-import re
-import time
-import os
-import multiprocessing as mp
-import matplotlib.pyplot as plt
-import time
+import re,time,os
+import time,json
 import datetime
 import math
 from bs4.element import Tag
@@ -23,8 +18,8 @@ final_dir  = output_directory + '01c Property_DF'
 ## Get data
 sourceid = 'domain'
 dateid =  pd.Series(os.listdir(output_directory + '01a Region href property')).str.extract('(\d{8})_').max()
-dateid = '20180722'
-print (dateid)
+dateid = '20190202'
+print(dateid)
 
 last_dateid = pd.Series(os.listdir(final_dir))
 last_dateid = last_dateid[~last_dateid.str.contains(dateid)]
@@ -96,19 +91,19 @@ iters = 1
 leni = len(suburb_list)
 len_iter = leni/iters
 
-rows1 = range( len_iter * 1 - len_iter ,len_iter * 1)
+rows1 = range( int(len_iter * 1 - len_iter ), int(len_iter * 1))
 #rows2 = range( len_iter * 2 - len_iter ,len_iter * 2)
 #rows3 = range( len_iter * 3 - len_iter ,len_iter * 3)
 #rows4 = range( len_iter * 4 - len_iter ,len_iter * 4)
 #rows5 = np.setdiff1d(range(leni),  rows1+rows2+rows3 + rows4)
 
 trackerDF = pd.DataFrame()
-for suburb in suburb_list[rows1]:     # suburb = suburb_list[rows][0]   suburb = 'kirribilli-nsw-2061'
+for suburb in suburb_list[rows1]:     
 #for suburb in suburb_list[rows2]:     # suburb = suburb_list[rows4][0]   suburb = 'kirribilli-nsw-2061'
 #for suburb in suburb_list[rows3]:     # suburb = suburb_list[rows4][0]   suburb = 'kirribilli-nsw-2061'
 #for suburb in suburb_list[rows4]:     # suburb = suburb_list[rows4][0]   suburb = 'kirribilli-nsw-2061'
 #for suburb in suburb_list[rows5]:     # suburb = suburb_list[rows4][0]   suburb = 'kirribilli-nsw-2061'
-    print suburb
+    print(suburb)
     if os.path.exists(suburb_dir+'/'+suburb+'.csv') ==False:
         s_t1 = time.time()
         suburb_files = txt_files.query('suburb=="'+suburb+'"')[['filename']]
@@ -146,7 +141,7 @@ for suburb in suburb_list[rows1]:     # suburb = suburb_list[rows][0]   suburb =
             # now pull the pretty dictionary with all the data at the end of the page
             if sold_info.shape[0]> 0:
                 # with domainIDs find addtional          x = sold_info['domainid'][0]   '{"id":'+x+'.*}}}'
-                sold_info['extract'] = sold_info['domainid'].apply(lambda x: pd.Series(soup.encode('utf-8')).str.extract('({"id":'+x+'.*}}})',expand=False))
+                sold_info['extract'] = sold_info['domainid'].apply(lambda x: pd.Series(str(soup)).str.extract('({"id":'+x+'.*})',expand=False))
                 sold_info = sold_info.query('extract == extract')
                 ## 'str.extract' is a 'greedy' matcher so only take first time it matches "}}}" not last time
                 sold_info['extract'] = sold_info['extract'].str.split('}}}',expand=True)[0].apply(lambda x: x+'}}}')
@@ -158,7 +153,7 @@ for suburb in suburb_list[rows1]:     # suburb = suburb_list[rows][0]   suburb =
                 info_extract = pd.DataFrame()
                 for idx in sold_info['extract'].index.values:
                     #print(idx)
-                    new_info = pd.DataFrame(eval(sold_info['extract'].loc[idx])).reset_index()
+                    new_info = pd.DataFrame(eval(sold_info['extract'].str.strip().loc[idx])).reset_index()
                     new_info = new_info.rename(columns={'index':'key','id':sourceid+'id'}).drop('listingType',axis=1)
                     info_extract = pd.concat([info_extract, new_info],axis=0, ignore_index=True)
                 # now combine final set

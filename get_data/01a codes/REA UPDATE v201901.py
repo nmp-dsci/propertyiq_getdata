@@ -114,7 +114,7 @@ for row in area_counts.query('complete!=1').index.values:           # row = rows
 		time.sleep(0.5)
 		try:
 			find_max_pages = urlopen(url_domain.replace("#PAGE#",str(page_no))).read().decode('utf-8')
-		except HTTPError:
+		except :
 			continue
 		soup = BeautifulSoup(find_max_pages)
 		# find class, max page

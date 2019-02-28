@@ -3,12 +3,9 @@
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
-from urllib2 import urlopen
 import re
 import time
 import os
-import multiprocessing as mp
-import matplotlib.pyplot as plt
 import time
 import datetime
 import math
@@ -17,7 +14,7 @@ from bs4.element import Tag
 #time.sleep(3600*3)
 #dateid = time.strftime("%Y%m%d")
 sourceid = 'auhouse_rent'
-dateid = str(20180722)
+dateid = str(20190202)
 print (dateid)
 
 ## set directory
@@ -29,7 +26,7 @@ final_dir  = output_directory + '01c Property_DF'
 last_dateid = pd.Series(os.listdir(final_dir))
 last_dateid = last_dateid[last_dateid.str.contains(sourceid)]
 last_dateid = last_dateid.str.extract('(\d{8})',expand=False)
-last_dateid = last_dateid[last_dateid<> dateid]
+last_dateid = last_dateid[last_dateid!= dateid]
 last_dateid = last_dateid.astype(float).max().astype(int).astype(str)
 print('last Data Scrape: %s' % (last_dateid))
 scrape_area_dir =  output_directory + '01a Region href property/' + dateid +'_'+sourceid
@@ -40,7 +37,7 @@ suburb_dir =  output_directory + '01b Suburb_Files/' + dateid +'_'+sourceid
 suburb_files = pd.DataFrame({'suburb':os.listdir(suburb_dir)})
 suburb_files['size'] = suburb_files['suburb'].apply(lambda x: os.stat(suburb_dir+'/'+x).st_size)
 # filters
-suburb_files = suburb_files.query('suburb <> ".DS_Store"  and size > 100')
+suburb_files = suburb_files.query('suburb != ".DS_Store"  and size > 100')
 
 
 master_df = pd.DataFrame()
@@ -52,6 +49,18 @@ for suburb in suburb_files['suburb'].values:         # suburb = suburb_files.val
 ### Do some checks
 master_df.dtypes
 
+
+
+for col in list(master_df.columns):
+    print(col)
+    master_df[col] = master_df[col].str.strip('b').str.strip("'")
+
+# float treatment
+for flloat in ['bedrooms','bathrooms','carpark']:
+    print(flloat)
+    master_df[flloat] = master_df[flloat].astype(float)
+
+# property type treatment
 master_df['propertyType'] = master_df['propertyType'].str.lower()
 master_df['propertyType'] = master_df['propertyType'].apply(lambda x: 'duplex' if 'duplex' in x else x)
 master_df['propertyType'] = master_df['propertyType'].apply(lambda x: 'acreage' if 'acreage' in x else x)
@@ -63,11 +72,13 @@ master_df['propertyType'] = master_df['propertyType'].apply(lambda x: 'apartment
 master_df['propertyType'].value_counts(dropna=False)
 
 
+
 ##
+
 check_lookup = {
-        'bathrooms':range(10) + [np.NaN]
-    ,   'bedrooms':range(10) + [np.NaN]
-    ,   'carpark':range(10) + [np.NaN]
+        'bathrooms':[x for x in range(10)] + [np.NaN]
+    ,   'bedrooms':[x for x in range(10)] + [np.NaN]
+    ,   'carpark':[x for x in range(10)] + [np.NaN]
     ,   'propertyType':['apartment',
                          'other',
                          'house',
@@ -87,13 +98,16 @@ for k in check_lookup.keys():       # k = 'bedrooms'
     print(np.setdiff1d(master_df[k].unique(),check_lookup[k]))
 
 
+
+
 ####################
 pd.options.display.max_columns = 28
 
 # step 1: Pull out Date and Sold Type
 master_df['sale_date'] = master_df['sale_date'].str.lower()
 print('should be of Singular VAlue')
-print(master_df['sale_date'].str.extract('([a-z]+ [a-z]+) .*').value_counts())
+print(master_df['sale_date'].str.extract('([a-z]+ [a-z]+) .*',expand=False).value_counts())
+
 master_df['sale_date'] = master_df['sale_date'].str.replace('rent on','').str.strip()
 master_df['sale_date'] = master_df['sale_date'].apply(lambda x: '01 ' + x)
 
@@ -140,7 +154,7 @@ for k in check_lookup.keys():
 
 ###################
 ### PULL OUT ADDRESS
-master_df['raw_addr'] = master_df['href'].str.extract('\d+/(.*)/').str.lower()
+master_df['raw_addr'] = master_df['href'].str.extract('\d+/(.*)/',expand=False).str.lower()
 
 ## kill available on request or flag it!!
 master_df['Addr0_none'] = master_df['raw_addr'].str.contains('address_available_on_request').astype(int)
@@ -165,7 +179,7 @@ addr_number_map['addr_missing'] = addr_number_map.notnull().sum(axis=1).apply(la
 master_df = pd.concat([master_df,addr_number_map],axis=1)
 
 #### POSTCODE
-master_df['postcode'] = master_df['address'].str.lower().str.extract('[a-z]+ (\d{4})').astype(int)
+master_df['postcode'] = master_df['address'].str.lower().str.extract('[a-z]+ (\d{4})',expand=False).astype(int)
 
 
 ####################
@@ -195,5 +209,5 @@ master_df = master_df.drop(['suburb','street2'],axis=1).rename(columns={'street3
 master_df.to_csv(final_dir  + '/'+dateid+'_'+sourceid+'.csv',index=False)
 
 
-
+# 20190202: 504,632
 master_df.shape

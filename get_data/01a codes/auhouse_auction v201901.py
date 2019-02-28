@@ -3,7 +3,7 @@
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 import re,time,os
 import time,datetime,math
@@ -43,6 +43,8 @@ else:
     url_master = url_master.merge(url_already,on='dateID',how='left')
     url_master.to_csv(updatefile, index=False)
 
+max_complete =  url_master.query('complete==1')['dateID'].max()
+
 ##
 template_url = 'https://www.auhouseprices.com/auction/results/###STATE###/###DATEID###/###PAGEID###'
 
@@ -56,7 +58,7 @@ def get_hrefs(a):
 #### drivers
 summary_df = pd.DataFrame()
 
-for row in url_master.query('complete!=complete').index.values:           # row = range(rows)[0] # row = 0
+for row in url_master.query('complete!=complete & dateID>"{}"'.format(max_complete)).index.values:           # row = range(rows)[0] # row = 0
     dateID = url_master['dateID'].loc[row]
     state = url_master['state'].loc[row]
     print('Pulling---'+ state + '---' + dateID )
@@ -68,10 +70,9 @@ for row in url_master.query('complete!=complete').index.values:           # row 
     page_no = np.array(1)
     total_start = time.time()
     print(url_domain.replace("###PAGEID###",str(1)))
-    try:
-        find_max_pages = urlopen(url_domain.replace("###PAGEID###",str(1))).read().decode('utf-8')
-    except :
-        
+    max_url = url_domain.replace("###PAGEID###",str(1))
+    req = Request(max_url, headers={'User-Agent': 'Mozilla/5.0'})
+    find_max_pages = urlopen(req).read().decode('utf-8')
     soup = BeautifulSoup(find_max_pages)
     ## FIND MAX
     find_max = soup.findAll("li", { "class" : "active" })
@@ -95,7 +96,8 @@ for row in url_master.query('complete!=complete').index.values:           # row 
             print('Get Data')
             start = time.time()
             domain_url = url_domain.replace("###PAGEID###",str(page_no))
-            html = urlopen(domain_url).read().decode('utf-8')
+            req = Request(domain_url, headers={'User-Agent': 'Mozilla/5.0'})
+            html = urlopen(req).read().decode('utf-8')
             #
             text_file = open(output_name, "w")
             text_file.write(html)

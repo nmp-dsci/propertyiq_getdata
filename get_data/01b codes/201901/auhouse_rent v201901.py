@@ -3,20 +3,14 @@
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
-from urllib2 import urlopen
-import re
-import time
-import os
-import multiprocessing as mp
-import matplotlib.pyplot as plt
-import time
-import datetime
-import math
+from urllib.request import urlopen
+import re,time,os
+import time,datetime,math
 
 
 #dateid = time.strftime("%Y%m%d")
 sourceid = 'auhouse_rent'
-dateid = str(20180722)
+dateid = str(20190202)
 print (dateid)
 
 ## set directory
@@ -130,7 +124,7 @@ for row in rows1:     # row = 0   suburb = 'surry+hills-nsw-2010'
             if len(sold_info)==0:
                 find_sold = pd.Series(soup.findAll("div", { "class" : 'residential-card__content-wrapper'}))
                 #sold_info = find_sold.apply(lambda x: fields_funcs_v2.apply(lambda f: f(x)))
-            if len(sold_info)<>0:
+            if len(sold_info)!=0:
                 ### clean
                 sold_info['property_attr'] = sold_info['property_attr'].apply(lambda x: x.decode())
                 for k in regex_mapping.index.values:
