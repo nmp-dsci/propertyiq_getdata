@@ -3,25 +3,16 @@
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
-from urllib2 import urlopen,HTTPError
-import re
-import time
-import os
-import multiprocessing as mp
-import matplotlib.pyplot as plt
-import time
-import datetime
-import math
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+import re,time,os
+import time,datetime,math
 from bs4.element import Tag
 
-
-dateid = time.strftime("%Y%m%d")
-print (dateid)
+from config import * 
+from utils import * 
 
 ## set directory
-output_directory = "/Users/macmac/Documents/Property/20151207 Scape Sydney/"
-os.listdir(os.path.dirname(output_directory))
-
 sourceid = 'auhouse_auction'
 versionID = '1'
 
@@ -29,10 +20,16 @@ scrape_area_dir = output_directory + '01a Region href property/'+ sourceid +'_v'
 if os.path.exists(scrape_area_dir) == False:
     os.mkdir(scrape_area_dir)
 
+### get the suburb file to run through
 updatefile = output_directory + '01a Region href property/'+sourceid+'_'+dateid + '.csv'
 
+last_dateid = last_update(output_directory,dateid)
+
+area_counts = get_jobs(updatefile, output_directory,last_dateid,sourceid)
+
+
 ### Build driver of urls to scrape which is saturday of results
-start_yyyymmdd = pd.to_datetime('2015-01-01')
+start_yyyymmdd = pd.to_datetime('2016-01-01')
 end_yyyymmdd = pd.to_datetime('today')
 
 if os.path.exists(updatefile):
@@ -43,8 +40,13 @@ else:
     url_master = url_master.query('DoW == "Sat"')
     url_master['dateID'] = url_master['dateID'].astype(str)
     url_master['state'] = 'NSW'
-    url_master['complete'] = np.NaN
+    url_already = pd.DataFrame({'dateID':os.listdir(scrape_area_dir),'complete':1})
+    url_already.dateID = url_already.dateID.str.extract('(\d{4}-\d{2}-\d{2})')
+    url_master = url_master.merge(url_already,on='dateID',how='left')
     url_master.to_csv(updatefile, index=False)
+
+max_complete =  url_master.query('complete==1')['dateID'].max()
+
 ##
 template_url = 'https://www.auhouseprices.com/auction/results/###STATE###/###DATEID###/###PAGEID###'
 
@@ -56,12 +58,11 @@ def get_hrefs(a):
 
 
 #### drivers
-rows = url_master.shape[0]
 summary_df = pd.DataFrame()
 
-for row in range(rows):           # row = range(rows)[0] # row = 0
-    dateID = url_master['dateID'].iloc[row]
-    state = url_master['state'].iloc[row]
+for row in url_master.query('complete!=complete & dateID>"{}"'.format(max_complete)).index.values:           # row = range(rows)[0] # row = 0
+    dateID = url_master['dateID'].loc[row]
+    state = url_master['state'].loc[row]
     print('Pulling---'+ state + '---' + dateID )
     ## STEP 1 IDENTIFY URL
     url_domain = template_url.replace("###STATE###", state)
@@ -70,7 +71,10 @@ for row in range(rows):           # row = range(rows)[0] # row = 0
     uptodate = False
     page_no = np.array(1)
     total_start = time.time()
-    find_max_pages = urlopen(url_domain.replace("###PAGEID###",str(1))).read()
+    print(url_domain.replace("###PAGEID###",str(1)))
+    max_url = url_domain.replace("###PAGEID###",str(1))
+    req = Request(max_url, headers={'User-Agent': 'Mozilla/5.0'})
+    find_max_pages = urlopen(req).read().decode('utf-8')
     soup = BeautifulSoup(find_max_pages)
     ## FIND MAX
     find_max = soup.findAll("li", { "class" : "active" })
@@ -94,7 +98,8 @@ for row in range(rows):           # row = range(rows)[0] # row = 0
             print('Get Data')
             start = time.time()
             domain_url = url_domain.replace("###PAGEID###",str(page_no))
-            html = urlopen(domain_url).read();\
+            req = Request(domain_url, headers={'User-Agent': 'Mozilla/5.0'})
+            html = urlopen(req).read().decode('utf-8')
             #
             text_file = open(output_name, "w")
             text_file.write(html)
@@ -102,6 +107,6 @@ for row in range(rows):           # row = range(rows)[0] # row = 0
             print("Time taken: --- %s seconds ---" % (time.time() - start))
 		#
     print("Time taken: --- %s seconds ---" % (time.time() - total_start))
-    url_master['complete'].iloc[row] = 1
+    url_master['complete'].loc[row] = 1
     url_master.to_csv(updatefile,index=False)
 #### END LOOP

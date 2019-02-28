@@ -1,6 +1,11 @@
 
 import os
+
 basedir = os.path.abspath(os.path.dirname(__file__))
+
+output_directory = os.environ.get('OUTPUT_DIR')
+
+dateid = os.environ.get('DATEID')
 
 
 class Config:
