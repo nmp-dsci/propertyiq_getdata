@@ -17,9 +17,8 @@ poa_sub = poa_sub.query('type=="Delivery Area"')
 
 ## Get data
 sourceID = 'auhouse_auction'
-versionID = '1'
-scrape_area_dir = output_directory + '01a Region href property/'+ sourceID +'_v' + versionID
-suburb_dir =  output_directory + '01b Suburb_Files/'+ sourceID +'_v' + versionID
+scrape_area_dir = output_directory + '01a Region href property/'+ sourceID 
+suburb_dir =  output_directory + '01b Suburb_Files/'+ sourceID 
 
 #######################################################################
 # Build Master
@@ -126,7 +125,7 @@ master_df.isnull().sum(axis=0)
 
 # 20180613:   rows: 171,317
 # 20190202:   rows: 196,231
-master_df.to_csv(final_dir  + '/'+sourceID+'_v'+versionID+'.csv',index=False)
+master_df.to_csv(final_dir  + '/'+sourceID+'.csv',index=False)
 # master_df = pd.read_csv(final_dir  + '/'+dateid+'_domain_all.csv')
 
 ## on master for merging

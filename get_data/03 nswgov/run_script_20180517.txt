@@ -1,4 +1,0 @@
-
-python "/Users/macmac/Documents/Property/20180116 NSWGOV_data/01 Process_20180304.py"
-
-python "/Users/macmac/Documents/Property/20180116 NSWGOV_data/02 Merge_data.py"

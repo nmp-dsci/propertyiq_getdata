@@ -14,9 +14,8 @@ from utils import *
 
 ## set directory
 sourceid = 'auhouse_auction'
-versionID = '1'
 
-scrape_area_dir = output_directory + '01a Region href property/'+ sourceid +'_v' + versionID
+scrape_area_dir = output_directory + '01a Region href property/'+ sourceid 
 if os.path.exists(scrape_area_dir) == False:
     os.mkdir(scrape_area_dir)
 

@@ -17,11 +17,10 @@ from config import *
 from utils import * 
 
 sourceid = 'auhouse_auction'
-versionID = '1'
 
-scrape_area_dir = output_directory + '01a Region href property/'+ sourceid +'_v' + versionID
+scrape_area_dir = output_directory + '01a Region href property/'+ sourceid 
 
-project_dir =  output_directory + '01b Suburb_Files/'+ sourceid +'_v' + versionID
+project_dir =  output_directory + '01b Suburb_Files/'+ sourceid 
 if os.path.exists(project_dir) ==False:
     os.mkdir(project_dir)
 

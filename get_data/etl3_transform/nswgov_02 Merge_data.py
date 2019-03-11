@@ -22,9 +22,6 @@ os.listdir(diri)
 output_dir = home_dir + '02 output_data'
 os.listdir(output_dir)
 
-dateid = '20180517'
-
-
 files = pd.Series(os.listdir(diri))
 files = files[files.str.contains('output_')]
 
@@ -36,7 +33,7 @@ for f in files:
     fdf = pd.read_csv(diri +'/'+ f)
     master = pd.concat([master,fdf],axis=0)
 
-master.to_csv(output_dir+'/ALLrecords_'+dateid+'.csv',index=False)
+master.to_csv(output_dir+'/ALLrecords.csv',index=False)
 
 ### SPLIT this master file into record types
 for rtype in ['A','B','C','D','Z']:  # rtype = 'B'
@@ -47,7 +44,6 @@ for rtype in ['A','B','C','D','Z']:  # rtype = 'B'
     recordDF = recordDF.drop_duplicates(['index','variable'],keep='first')
     #recordDF.groupby('index').size().value_counts()
     recordDF = recordDF.pivot(index='index',columns='variable',values = 'value').reset_index()
-    recordDF.to_csv(output_dir+'/record_'+rtype+'_'+dateid+'.csv',index=False)
     
 
 
