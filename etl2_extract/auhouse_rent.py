@@ -2,24 +2,27 @@
 ### IMPORT Libraries
 import pandas as pd
 import numpy as np
-from bs4 import BeautifulSoup
 from urllib.request import urlopen
-import re,time,os
+from urllib.error import HTTPError
+import re,time,os,sys
 import time,datetime,math
+
+from bs4 import BeautifulSoup
+from bs4.element import Tag
+
+sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
 
 from config import * 
 from utils import * 
-
-
 
 sourceid = 'auhouse_rent'
 
 scrape_area_dir =  output_directory + '01a Region href property/'+dateid +'_'+sourceid
 
 suburb_dir =  output_directory + '01b Suburb_Files/' + dateid +'_'+sourceid
+
 if os.path.exists(suburb_dir) == False :
     os.mkdir(suburb_dir)
-
 
 ################################################################
 #### functiosn for search page
@@ -73,6 +76,8 @@ txt_files['suburb'] = txt_files['filename'].str.split('_p\d+',expand=True)[0]
 txt_files['suburb'].value_counts()
 txt_files['suburb'][txt_files['suburb'].str.contains('_p')] = np.NaN
 txt_files = txt_files.query('suburb==suburb')
+
+print('Total Volume of files to extract: {:d}'.format(txt_files.shape[0]))
 
 # check for back split rule
 #txt_files[~txt_files['suburb'].str.contains('(\w+_\d{4}_\w+)')]

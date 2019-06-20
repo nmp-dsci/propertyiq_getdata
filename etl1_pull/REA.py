@@ -5,9 +5,11 @@ import numpy as np
 from bs4 import BeautifulSoup
 from urllib.request import urlopen
 from urllib.error import HTTPError
-import re,time,os
+import re,time,os,sys
 import multiprocessing as mp
 import time,datetime,math
+
+sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
 
 from config import * 
 from utils import * 
@@ -20,11 +22,8 @@ if os.path.exists(scrape_area_dir) == False :
 
 ### get the suburb file to run through
 updatefile = output_directory + '01a Region href property/'+sourceid+'_'+dateid + '.csv'
-
 last_dateid = last_update(output_directory,dateid)
-
 area_counts = get_jobs(updatefile, output_directory,last_dateid,sourceid)
-
 
 print('has DateID (scraped before) else never scraped')
 print(area_counts.query('DateID!=DateID').shape)

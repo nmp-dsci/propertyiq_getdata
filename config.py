@@ -1,3 +1,9 @@
+"""
+NEED TO set global variables 
+export OUTPUT_DIR="/Users/macmac/Documents/Property/20151207 Scape Sydney/"
+export DATEID=20190614
+"""
+
 
 import os
 
@@ -10,36 +16,35 @@ master_dir = output_directory + '01e Master_DF'
 
 dateid = os.environ.get('DATEID')
 
-
 ###############################################
 ### website
-class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'hard to guess string'
-    SQLALCHEMY_COMMIT_ON_TEARDOWN = True
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_RECORD_QUERIES = True
-    # MAIL_SERVER = 'smtp.googlemail.com'
+# class Config:
+    # SECRET_KEY = os.environ.get('SECRET_KEY') or 'hard to guess string'
+    # SQLALCHEMY_COMMIT_ON_TEARDOWN = True
+    # SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # SQLALCHEMY_RECORD_QUERIES = True
+    # # MAIL_SERVER = 'smtp.googlemail.com'
     # MAIL_PORT = 587
     # MAIL_USE_TLS = True
     # MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     # MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
     # PROPERTYIQ_MAIL_SUBJECT_PREFIX = '[PROPERTYIQ]'
     # PROPERTYIQ_MAIL_SENDER = 'PROPERTYIQ Admin <PROPERTYIQ@example.com>'
-    PROPERTYIQ_ADMIN = os.environ.get('PROPERTYIQ_ADMIN')
+    # PROPERTYIQ_ADMIN = os.environ.get('PROPERTYIQ_ADMIN')
     # PROPERTYIQ_POSTS_PER_PAGE = 20
     # PROPERTYIQ_FOLLOWERS_PER_PAGE = 50
     # PROPERTYIQ_COMMENTS_PER_PAGE = 30
     # PROPERTYIQ_SLOW_DB_QUERY_TIME=0.5
 
-    @staticmethod
-    def init_app(app):
-        pass
+    # @staticmethod
+    # def init_app(app):
+    #     pass
 
 
-class DevelopmentConfig(Config):
-    DEBUG = True
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
-        'sqlite:///' + os.path.join(basedir, 'data-dev.sqlite')
+# class DevelopmentConfig(Config):
+#     DEBUG = True
+#     SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
+#         'sqlite:///' + os.path.join(basedir, 'data-dev.sqlite')
 
 
 # class TestingConfig(Config):
@@ -54,10 +59,10 @@ class DevelopmentConfig(Config):
 #         'sqlite:///' + os.path.join(basedir, 'data.sqlite')
 
 
-config = {
-    # 'development': DevelopmentConfig,
-    # 'testing': TestingConfig,
-    # 'production': ProductionConfig,
+# config = {
+#     # 'development': DevelopmentConfig,
+#     # 'testing': TestingConfig,
+#     # 'production': ProductionConfig,
 
-    'default': DevelopmentConfig
-}
+#     'default': DevelopmentConfig
+# }

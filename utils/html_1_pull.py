@@ -1,6 +1,7 @@
 
 import os
 import pandas as pd
+import numpy as np
 
 
 def get_hrefs(a):
@@ -25,9 +26,12 @@ def get_jobs(updatefile, output_directory,last_dateid,sourceid):
     else:
         # pull the lasted final dataset for source to get max_dateid
         old_source_df = pd.read_csv(output_directory + '01e Master_DF' + '/'+ last_dateid+'_'+sourceid+'.csv')
-        old_source_df['DateID'] = pd.to_datetime(old_source_df['dateID'])
-        old_source_df['bedrooms'] = old_source_df['beds'].fillna(0).apply(lambda x: '5' if x > 4 else str(int(x)) )
-        old_source_df['bedrooms'].value_counts()
+        old_source_df = old_source_df.rename(columns={'dateID':'DateID','beds':'bedrooms'})
+        old_source_df['DateID'] = old_source_df['DateID'].str.extract("b'(\d+)'",expand=False).fillna(old_source_df['DateID'])
+        old_source_df['DateID'] = pd.to_datetime(old_source_df['DateID'])
+        # bedrooms
+        old_source_df['bedrooms'] = old_source_df['bedrooms'].str.extract("b'(\d+.\d+)'",expand=False).fillna(old_source_df['bedrooms'])
+        old_source_df['bedrooms'] = old_source_df['bedrooms'].astype(float).fillna(0).apply(lambda x: '5' if x > 4 else str(int(x)) )
         ####################
         ### Bring in master poa mapping
         poa_sub = pd.read_csv(output_directory+'00 POA_SUBURB.csv')
@@ -48,6 +52,7 @@ def get_jobs(updatefile, output_directory,last_dateid,sourceid):
         #### Tag max date listing
         old_source_df = old_source_df.query('suburb==suburb&postcode==postcode')
         old_source_df['suburb'] = old_source_df['suburb'].str.lower().str.replace(' ','+')
+        old_source_df['postcode'] = old_source_df['postcode'].str.extract("b'(\d+)'",expand=False).fillna(old_source_df['postcode'])
         old_source_df['postcode'] = old_source_df['postcode'].astype(int).astype(str)
         poa_sub_dateID = old_source_df.groupby(['postcode','suburb','bedrooms'])['DateID'].max().reset_index()
         ## final
