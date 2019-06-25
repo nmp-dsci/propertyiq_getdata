@@ -2,8 +2,15 @@
 ### IMPORT Libraries
 import pandas as pd
 import numpy as np
-import re,time,os
-import time,datetime
+from urllib.request import urlopen
+from urllib.error import HTTPError
+import re,time,os,sys
+import time,datetime,math
+
+from bs4 import BeautifulSoup
+from bs4.element import Tag
+
+sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
 
 from config import * 
 from utils import * 
@@ -31,12 +38,14 @@ for suburb in suburb_files['suburb'].values:         # suburb = suburb_files.val
 
 ### Do some checks
 master_df.dtypes
+#pd.options.display.max_columns = 20
+master_df = master_df.head().apply(lambda x: x.str.extract("b'(.*)'$"),axis=0)
 
 
 #
 for col in list(master_df.columns):
     print(col)
-    master_df[col] = master_df[col].str.strip('b').str.strip("'")
+    master_df[col] = master_df[col].str.extract("b'(.*)'$")
 
 # float treatment
 for flloat in ['bedrooms','bathrooms','carpark']:
@@ -56,22 +65,25 @@ master_df['propertyType'].value_counts(dropna=False)
 
 
 ##
+master_df.bathrooms = master_df.bathrooms.astype(float)
+master_df.bedrooms = master_df.bedrooms.astype(float)
+master_df.carpark = master_df.carpark.astype(float)
 
 check_lookup = {
         'bathrooms':[x for x in range(10)] + [np.NaN]
     ,   'bedrooms':[x for x in range(10)] + [np.NaN]
     ,   'carpark':[x for x in range(10)] + [np.NaN]
-    ,   'propertyType':['apartment',
-                         'other',
-                         'house',
-                         'terrace',
-                         'townhouse',
-                         'duplex',
-                         'acreage',
-                         'villa',
-                         'warehouse',
-                         'alpine',
-                         'retirement living']
+    ,   'propertyType':['apartment'
+                    ,   'other'
+                    ,   'house'
+                    ,   'terrace'
+                    ,   'townhouse'
+                    ,   'duplex'
+                    ,   'acreage'
+                    ,   'villa'
+                    ,   'warehouse'
+                    ,   'alpine'
+                    ,   'retirement living']
     }
 
 print("Check no missing values, NaN okay")
@@ -102,7 +114,7 @@ master_df = master_df.query('DateID == DateID')
 
 # price
 print('PRICE: per week')
-price_format = '\$\d*,*\d{2,3}/week'
+price_format = '\$\d+*,*\d{2,3}/week'
 print('Should ALL BE TRUE... price format')
 master_df['price_fmt']=master_df['price_str'].str.contains(price_format)
 print(master_df['price_str'].str.contains(price_format).value_counts(dropna=False))
@@ -159,23 +171,24 @@ addr_number_map['addr_missing'] = addr_number_map.notnull().sum(axis=1).apply(la
 master_df = pd.concat([master_df,addr_number_map],axis=1)
 
 #### POSTCODE
-master_df['postcode'] = master_df['address'].str.lower().str.extract('[a-z]+ (\d{4})',expand=False).astype(int)
+master_df['postcode'] = master_df['address'].str.lower().str.extract('[a-z]+ (\d{4})',expand=False).astype(float)
 
 
 ####################
 ## PULL SUBURB from file name and done!!
+
 master_df['suburb2'] = master_df['suburb'].str.replace('nsw_\d{4}_','')
 master_df['suburb2'] = master_df['suburb2'].str.replace('+',' ')
 
 ###################
 ## street               x = master_df.iloc[1,:]
+
 street_raw = master_df.query('streetNo==streetNo and address==address').apply(lambda x: re.split(x['streetNo'],x['raw_addr'])[1],axis=1)
 master_df['street2'] = street_raw.copy()
 street_raw2 = master_df.query('streetNo==streetNo and address==address').apply(lambda x: re.split(re.sub(' ','_',x['suburb2']),x['street2'])[0],axis=1)
 master_df['street3'] = street_raw2.copy()
 master_df['street3'] = master_df['street3'].str.strip('_').str.replace('_',' ')
 master_df['street3'] = master_df['street3'].apply(lambda x: np.NaN if len(str(x)) <4 else x)
-
 
 master_df = master_df.drop(['suburb','street2'],axis=1).rename(columns={'street3':'street','suburb2':'suburb'})
 
@@ -187,5 +200,6 @@ master_df = master_df.drop(['suburb','street2'],axis=1).rename(columns={'street3
 master_df.to_csv(final_dir  + '/'+dateid+'_'+sourceid+'.csv',index=False)
 
 
-# 20190202: 504,632
+# 20190202: '504,632'
+# 20190614: '465,375', 22
 master_df.shape
