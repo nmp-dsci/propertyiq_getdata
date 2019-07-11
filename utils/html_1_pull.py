@@ -1,7 +1,11 @@
 
 import os
 import pandas as pd
+import numpy as np
 
+import requests
+from stem import Signal
+from stem.control import Controller
 
 def get_hrefs(a):
     href_i = a.split('href="')[1]
@@ -25,9 +29,12 @@ def get_jobs(updatefile, output_directory,last_dateid,sourceid):
     else:
         # pull the lasted final dataset for source to get max_dateid
         old_source_df = pd.read_csv(output_directory + '01e Master_DF' + '/'+ last_dateid+'_'+sourceid+'.csv')
-        old_source_df['DateID'] = pd.to_datetime(old_source_df['dateID'])
-        old_source_df['bedrooms'] = old_source_df['beds'].fillna(0).apply(lambda x: '5' if x > 4 else str(int(x)) )
-        old_source_df['bedrooms'].value_counts()
+        old_source_df = old_source_df.rename(columns={'dateID':'DateID','beds':'bedrooms'})
+        old_source_df['DateID'] = old_source_df['DateID'].str.extract("b'(\d+-\d+-\d+)'",expand=False).fillna(old_source_df['DateID'])
+        old_source_df['DateID'] = pd.to_datetime(old_source_df['DateID'])
+        # bedrooms
+        old_source_df['bedrooms'] = old_source_df['bedrooms'].str.extract("b'(\d*.*\d*)'",expand=False).fillna(old_source_df['bedrooms']).apply(lambda x: '0' if x == '' else x )
+        old_source_df['bedrooms'] = old_source_df['bedrooms'].astype(float).fillna(0).apply(lambda x: '5' if x > 4 else str(float(x)) )
         ####################
         ### Bring in master poa mapping
         poa_sub = pd.read_csv(output_directory+'00 POA_SUBURB.csv')
@@ -42,13 +49,14 @@ def get_jobs(updatefile, output_directory,last_dateid,sourceid):
         ### full POA * SUBURB
         area_counts = pd.merge(poa_sub_focus,beds_df, on='dummy')
         area_counts['state'] = 'nsw'
-        area_counts['postcode'] =area_counts['postcode'].astype(int).astype(str)
+        area_counts['postcode'] =area_counts['postcode'].astype(float).astype(int).astype(str)
         area_counts['area_sydney'] = area_counts.apply(lambda x: '-'.join(x[['suburb','state','postcode']]),axis = 1)
         area_counts['complete'] = np.NaN
         #### Tag max date listing
         old_source_df = old_source_df.query('suburb==suburb&postcode==postcode')
         old_source_df['suburb'] = old_source_df['suburb'].str.lower().str.replace(' ','+')
-        old_source_df['postcode'] = old_source_df['postcode'].astype(int).astype(str)
+        old_source_df['postcode'] = old_source_df['postcode'].str.extract("b'(\d+)'",expand=False).fillna(old_source_df['postcode'])
+        old_source_df['postcode'] = old_source_df['postcode'].astype(float).astype(int).astype(str)
         poa_sub_dateID = old_source_df.groupby(['postcode','suburb','bedrooms'])['DateID'].max().reset_index()
         ## final
         area_counts = pd.merge(
@@ -59,4 +67,17 @@ def get_jobs(updatefile, output_directory,last_dateid,sourceid):
             )
     # 
     return area_counts
-        
+
+
+### stem setup
+def get_tor_session():
+    session = requests.session()
+    # Tor uses the 9050 port as the default socks port
+    session.proxies = {'http':  'socks5://127.0.0.1:9050',
+                       'https': 'socks5://127.0.0.1:9050'}
+    return session
+
+def renew_connection():
+    with Controller.from_port(port = 9051) as controller:
+        controller.authenticate()
+        controller.signal(Signal.NEWNYM)

@@ -5,15 +5,17 @@ import numpy as np
 from bs4 import BeautifulSoup
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
-import re,time,os
+import re,time,os,sys
 import time,datetime,math
 from bs4.element import Tag
+
+sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
 
 from config import * 
 from utils import * 
 
 ## set directory
-sourceid = 'auhouse_auction'
+sourceid = 'auhouse_auction' 
 
 scrape_area_dir = output_directory + '01a Region href property/'+ sourceid 
 if os.path.exists(scrape_area_dir) == False:
@@ -21,14 +23,13 @@ if os.path.exists(scrape_area_dir) == False:
 
 ### get the suburb file to run through
 updatefile = output_directory + '01a Region href property/'+sourceid+'_'+dateid + '.csv'
-
 last_dateid = last_update(output_directory,dateid)
+# area_counts = get_jobs(updatefile, output_directory,last_dateid,sourceid)
 
-area_counts = get_jobs(updatefile, output_directory,last_dateid,sourceid)
-
+area_counts = pd.read_csv(output_directory+'01e Master_DF/'+last_dateid+'_'+sourceid+'.csv')
 
 ### Build driver of urls to scrape which is saturday of results
-start_yyyymmdd = pd.to_datetime('2016-01-01')
+start_yyyymmdd = pd.to_datetime(area_counts.dateID.max())
 end_yyyymmdd = pd.to_datetime('today')
 
 if os.path.exists(updatefile):
@@ -39,27 +40,18 @@ else:
     url_master = url_master.query('DoW == "Sat"')
     url_master['dateID'] = url_master['dateID'].astype(str)
     url_master['state'] = 'NSW'
-    url_already = pd.DataFrame({'dateID':os.listdir(scrape_area_dir),'complete':1})
-    url_already.dateID = url_already.dateID.str.extract('(\d{4}-\d{2}-\d{2})')
-    url_master = url_master.merge(url_already,on='dateID',how='left')
+    url_master['complete'] = np.NaN
     url_master.to_csv(updatefile, index=False)
-
-max_complete =  url_master.query('complete==1')['dateID'].max()
 
 ##
 template_url = 'https://www.auhouseprices.com/auction/results/###STATE###/###DATEID###/###PAGEID###'
 
-## STEP 2 SET FunctionFOR HREF
-def get_hrefs(a):
-    href_i = a.split('href="')[1]
-    href_i = href_i.split('"')[0]
-    return(href_i);\
 
 
 #### drivers
 summary_df = pd.DataFrame()
 
-for row in url_master.query('complete!=complete & dateID>"{}"'.format(max_complete)).index.values:           # row = range(rows)[0] # row = 0
+for row in url_master.query('complete!=complete ').index.values:           # row = range(rows)[0] # row = 0
     dateID = url_master['dateID'].loc[row]
     state = url_master['state'].loc[row]
     print('Pulling---'+ state + '---' + dateID )

@@ -3,24 +3,27 @@ import pandas as pd
 import numpy as np
 from urllib.request import urlopen
 from urllib.error import HTTPError
-import re,time,os
+import re,time,os,sys
 import multiprocessing as mp
 import time,datetime,math
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 
+sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
+
 from config import * 
 from utils import * 
 
-
+# get base table to iterate through
 sourceid = 'domain'
-
 updatefile = output_directory + '01a Region href property/'+sourceid+'_'+dateid + '.csv'
-
 last_dateid = last_update(output_directory,dateid)
 
-area_counts = get_jobs(updatefile, output_directory,last_dateid,sourceid)
+if os.path.exists(updatefile) :
+	area_counts = pd.read_csv(updatefile)
+else:
+	area_counts = get_jobs(updatefile, output_directory,last_dateid,sourceid)
 
 
 scrape_area_dir =  output_directory + '01a Region href property/' + dateid +'_'+sourceid
@@ -34,7 +37,7 @@ template_url = 'https://www.domain.com.au/sold-listings/###AREA_SYDNEY###/?bedro
 for row in area_counts.query('complete!=complete').index.values:
     region = area_counts['area_sydney'].loc[row]
     bedrooms = area_counts['bedrooms'].loc[row]
-    curr_dateid = pd.to_datetime(area_counts['dateID'].loc[row])
+    curr_dateid = pd.to_datetime(area_counts['DateID'].loc[row])
     print(region+ '-bedrooms_' + str(bedrooms))
     #
     url_domain = template_url.replace("###AREA_SYDNEY###", region)
@@ -46,23 +49,15 @@ for row in area_counts.query('complete!=complete').index.values:
     ## get max page
     try:
         find_max_pages = urlopen(url_domain.replace("#PAGE#",str(1))).read().decode('utf-8')
-    except :
-        continue
-    #
-    soup = BeautifulSoup(find_max_pages)
-    # find class, max page
-    find_max = soup.findAll("h1", { "class" : "search-results__summary" })
-    if len(find_max) == 0:
-        print('\ncouldnt find page max\n')
-        max_page = 0
-    else:
-        find_max = find_max[0].text
-        find_max = re.split('Proper',find_max,maxsplit=1)[0]
-        max_page = pd.Series(find_max).str.split('[^0-9]',expand=True)
-        max_page = max_page[max_page!=''].max().max()
+        soup = BeautifulSoup(find_max_pages)
+        find_max = [x.text for x in soup.findAll("h1")]
+        max_page = pd.Series(find_max).str.extract('(\d+), {b} Bedroom'.format(b=bedrooms)).astype(float).max()
         max_page = int(max_page)/20.0
         max_page = 50 if max_page > 50 else int(np.ceil(max_page))
         print('MAX pages is: {}'.format(max_page))
+    except :
+        print("ERROR: Can't find MAX page")
+        continue
     ## STEP 4:  GET PAGES
     for page_no in range(1,max_page + 1):       # page_no=1
         print("Iterating Through Page: %s" % page_no)
@@ -79,6 +74,7 @@ for row in area_counts.query('complete!=complete').index.values:
                 date_pattern = '(\d{1,2} \w{3} \d{4})'
                 html_dates = pd.Series(re.findall(date_pattern, html))
                 html_dates = pd.to_datetime(html_dates, format = '%d %b %Y')
+                print('TESTING new_min={dt:s} < old_max={ex:s} '.format(dt=str(html_dates.min()), ex=str(curr_dateid)))
                 if html_dates.min() < curr_dateid:
                     uptodate = True
                 #
@@ -86,6 +82,7 @@ for row in area_counts.query('complete!=complete').index.values:
                 text_file.write(html)
                 text_file.close()
                 print("Time taken: --- %s seconds ---" % (time.time() - start))
+                time.sleep(np.max([10-(time.time() - start),0]))
     #
     print("Time taken: --- %s seconds ---" % (time.time() - total_start))
     area_counts['complete'].loc[row] = 1
