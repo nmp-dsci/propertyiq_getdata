@@ -15,7 +15,7 @@ from config import *
 from utils import * 
 
 ## set directory
-sourceid = 'auhouse_auction'
+sourceid = 'auhouse_auction' 
 
 scrape_area_dir = output_directory + '01a Region href property/'+ sourceid 
 if os.path.exists(scrape_area_dir) == False:
@@ -43,21 +43,15 @@ else:
     url_master['complete'] = np.NaN
     url_master.to_csv(updatefile, index=False)
 
-max_complete =  url_master.query('complete==1')['dateID'].max()
-
 ##
 template_url = 'https://www.auhouseprices.com/auction/results/###STATE###/###DATEID###/###PAGEID###'
 
-## STEP 2 SET FunctionFOR HREF
-def get_hrefs(a):
-    href_i = a.split('href="')[1]
-    href_i = href_i.split('"')[0]
-    return(href_i);\
+
 
 #### drivers
 summary_df = pd.DataFrame()
 
-for row in url_master.query('complete!=complete & dateID>"{}"'.format(max_complete)).index.values:           # row = range(rows)[0] # row = 0
+for row in url_master.query('complete!=complete ').index.values:           # row = range(rows)[0] # row = 0
     dateID = url_master['dateID'].loc[row]
     state = url_master['state'].loc[row]
     print('Pulling---'+ state + '---' + dateID )
