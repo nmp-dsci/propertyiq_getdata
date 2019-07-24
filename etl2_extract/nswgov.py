@@ -12,18 +12,23 @@ Pre-requisites
 """
 
 ### IMPORT Libraries
+
+### IMPORT Libraries
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
-from urllib2 import urlopen
-import re
-import time
-import os
+from urllib.request import urlopen
+import re,time,os
+import time,datetime,math
 import multiprocessing as mp
-import matplotlib.pyplot as plt
-import time
-import datetime
-import math
+
+sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
+
+from config import * 
+from utils import * 
+
+
+
 
 home_dir = "/Users/macmac/Documents/Property/20180116 NSWGOV_data/"
 os.listdir(home_dir)

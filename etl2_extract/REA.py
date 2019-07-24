@@ -7,9 +7,10 @@ from urllib.request import urlopen
 import re,time,os
 import time,datetime,math
 
+sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
+
 from config import * 
 from utils import * 
-
 
 ## Get data
 sourceid = 'REA'

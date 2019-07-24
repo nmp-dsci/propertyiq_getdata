@@ -3,20 +3,19 @@
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
-import re,time,os
+import re,time,os,sys
 import time,json
 import datetime
 import math
 from bs4.element import Tag
 
+sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
+
 from config import * 
 from utils import * 
 
-
-
 ## Get data
 sourceid = 'domain'
-
 
 scrape_area_dir = output_directory+'01a Region href property/'+dateid +'_'+sourceid
 
@@ -82,7 +81,7 @@ for suburb in suburb_list:
         })
         for filename in  suburb_files['filename']: # filename =suburb_files['filename'].iloc[1]
             s_t2 = time.time()
-            print('\t '+filename)     # filename = 'kiribilli-nsw-2061_b1_p1.txt'
+            print('\t '+filename)     # filename = 'kirribilli-nsw-2061_b1_p1.txt'
             # get data
             rawdata = open(scrape_area_dir + '/' + filename,"r").read()
             soup = BeautifulSoup(rawdata)
@@ -90,8 +89,14 @@ for suburb in suburb_list:
             find_sold = pd.Series(soup.findAll("li", { "class" : 'strap new-listing'}))
             if len(find_sold)==0:
                 find_sold = pd.Series(soup.findAll("li", { "class" : 'search-results__listing'}))
+            if len(find_sold)==0:
+                find_sold = pd.Series(soup.findAll("li", {}))
+                find_sold = find_sold[find_sold.apply(lambda x: x.get('data-testid') is not None)]
+            else:
+                print("cant find listings!!")
+                break
             ## pull results
-            find_sold = find_sold[find_sold.apply(lambda x: 'href' in x.decode())]
+            # find_sold = find_sold[find_sold.apply(lambda x: 'href' in x)]
             # clean out anything without a 'href' ... no property id
             sold_info = find_sold.apply(lambda x: fields_funcs.apply(lambda f: f(x)))
             ## update last_page_blocks

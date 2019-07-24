@@ -10,11 +10,14 @@ Created on Mon Jun 11 20:48:00 2018
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
-import re,time,os
+import re,time,os,sys
 import time,datetime,math
+
+sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
 
 from config import * 
 from utils import * 
+
 
 sourceid = 'auhouse_auction'
 
@@ -105,8 +108,8 @@ for url in files_df:        # url = 'NSW_2018-06-09_p1.txt'
     pull_fields = pd.merge(pull_fields,column_mapping,on='variable',how='left')
     auction_df = pull_fields.groupby(suburb_mapping+addr_mapping+['column'])['value'].max().unstack('column').reset_index()
     ## check it all worked
-    if auction_df.shape[0] != listing_n:
-        print('ERROR: Address count doesnt Match PAGE COUNT')
+    if abs(auction_df.shape[0] -  listing_n)>5:
+        print('ERROR: Address count doesnt Match PAGE COUNT...actual:{a} VS listings:{b}'.format(a=auction_df.shape[0],b=listing_n))
         break
     #
     auction_df.to_csv(project_dir+'/'+re.sub('.txt','.csv',url))
