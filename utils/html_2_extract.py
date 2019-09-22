@@ -1,5 +1,7 @@
 
 import re
+from bs4 import BeautifulSoup
+
 
 def get_value(domType, classValue, x):
     # eample run

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
 from urllib.request import urlopen
-import re,time,os
+import re,time,os,sys
 import time,datetime,math
 
 sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
@@ -72,6 +72,18 @@ fields_funcs_v3 = pd.Series({
         ,   "parking":lambda x: get_value("span", { "class" : 'general-features__icon general-features__cars'}, x).get_text(strip=True)
         })
 
+fields_funcs_v4 = pd.Series({
+            "price_str":lambda x: get_value("span", { "class" : 'property-price'}, x).get_text(strip=True)
+        ,   "address":lambda x: get_value("h2", { "class" : 'residential-card__address-heading'}, x).get_text(strip=True)
+        ,   "href":lambda x: get_value("a", { "class" : 'details-link residential-card__details-link'} , x).get('href')
+        ,   "property_type":lambda x: get_value("span", { "class" : 'residential-card__property-type'}, x).get_text(strip=True)
+        ,   "sale_date":lambda x: get_value("span", {"class":None}, x).get_text(strip=True)
+        ,   "beds":lambda x: get_value("span", { "class" : 'general-features__icon general-features__beds'}, x).get_text(strip=True)
+        ,   "bathrooms":lambda x: get_value("span", { "class" : 'general-features__icon general-features__baths'}, x).get_text(strip=True)
+        ,   "parking":lambda x: get_value("span", { "class" : 'general-features__icon general-features__cars'}, x).get_text(strip=True)
+        })
+
+
 ### Text files to aggreage on
 txt_files = pd.DataFrame({'filename':pd.Series(os.listdir(scrape_area_dir))})
 txt_files = txt_files[txt_files['filename'].str.contains('_p|.txt')]
@@ -107,25 +119,25 @@ for suburb in suburb_list:     # suburb = 'surry+hills-nsw-2010'
             # verions 0 scrape
             ## build on to this for the mapping 
             # iter 1
-            find_sold1 = pd.Series(soup.findAll("div", { "class" : 'presentation'}))
-            sold_info1 = find_sold1.apply(lambda x: fields_funcs.apply(lambda f: f(x)))
-            # iter 2
-            find_sold2 = pd.Series(soup.findAll("div", { "class" : 'residential-card__content-wrapper'}))
-            sold_info2 = find_sold2.apply(lambda x: fields_funcs_v2.apply(lambda f: f(x)))
-            # iter 3
-            find_sold3 = pd.Series(soup.findAll("article", { "class" : 'results-card residential-card'}))
-            sold_info3 = find_sold3.apply(lambda x: fields_funcs_v3.apply(lambda f: f(x)))
+            # find_sold1 = pd.Series(soup.findAll("div", { "class" : 'presentation'}))
+            # sold_info1 = find_sold1.apply(lambda x: fields_funcs.apply(lambda f: f(x)))
+            # # iter 2
+            # find_sold2 = pd.Series(soup.findAll("div", { "class" : 'residential-card__content-wrapper'}))
+            # sold_info2 = find_sold2.apply(lambda x: fields_funcs_v2.apply(lambda f: f(x)))
+            # # iter 3
+            # find_sold3 = pd.Series(soup.findAll("article", { "class" : 'results-card residential-card'}))
+            # sold_info3 = find_sold3.apply(lambda x: fields_funcs_v3.apply(lambda f: f(x)))
             # iter 4
-            find_sold4 = pd.Series(soup.findAll("article", { "class" : 'results-card residential-card residential-card--compressed-view'}))
-            sold_info4 = find_sold4.apply(lambda x: fields_funcs_v3.apply(lambda f: f(x)))
+            find_sold4 = pd.Series(soup.findAll("div", { "class" : 'residential-card__content-wrapper'}))
+            sold_info4 = find_sold4.apply(lambda x: fields_funcs_v4.apply(lambda f: f(x)))
             ## Create sold info
-            sold_info = pd.concat([sold_info1,sold_info2,sold_info3,sold_info4])
+            sold_info = pd.concat([sold_info4])
             if sold_info.shape[0]> 0:
                 sold_info = sold_info.query('href != "missing"')
             # now pull the pretty dictionary with all the data at the end of the page
             if sold_info.shape[0]> 0:
                 sold_info[sourceid+'id'] = sold_info['href'].str.extract('-(\d+)')
-                sold_info['extract'] = sold_info[sourceid+'id'].apply(lambda x: pd.Series(soup.decode()).str.extract('({"channel":"sold","listingId":"'+x+'".*)',expand=False))
+                sold_info['extract'] = sold_info[sourceid+'id'].astype(str).apply(lambda x: pd.Series(soup.decode()).str.extract('({"channel":"sold","listingId":"'+x+'".*)',expand=False))
                 sold_info.index = sold_info[sourceid+'id']
                 extract_df = sold_info['extract'].str.split(',"lister":',expand=True)
                 sold_info['extract'] = extract_df[0]+'}'  # fir cut of the data
@@ -202,7 +214,8 @@ for suburb in suburb_list:     # suburb = 'surry+hills-nsw-2010'
                 """
                 ### pull all together
                 """
-                keep_fields = ['address','bathrooms','beds','href','parking','price_img','price_str','property_type','sale_date']
+                keep_fields = ['address','bathrooms','beds','href','parking','price_str','property_type','sale_date']
+                # keep_fields = ['address','bathrooms','beds','href','parking','price_img','price_str','property_type','sale_date']
                 sold_info = sold_info.melt(id_vars = [sourceid+'id'], value_vars=keep_fields)
                 sold_info['key'] = 'HTML'
                 ### Append
