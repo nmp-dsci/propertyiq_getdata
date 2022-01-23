@@ -15,96 +15,149 @@ Pre-requisites
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
-from urllib2 import urlopen
 import re
 import time
+import requests, zipfile
 import os
-import multiprocessing as mp
 import matplotlib.pyplot as plt
 import time
 import datetime
 import math
 
-home_dir = "/Users/macmac/Documents/Property/20180116 NSWGOV_data/"
-os.listdir(home_dir)
-diri = home_dir + "00 data"
-os.listdir(diri)
+sourceid = 'nswgov'
 
-output_dir =  home_dir  + '01 output_data'
-if os.path.exists(output_dir) == False:
-    os.mkdir(output_dir)
+home_dir = f'../../data/propertyiq_getdata/{sourceid}'
+
+output_dir = f'{home_dir}/annual'
+
+export_dir = f'{home_dir}/output_etl2'
+if os.path.exists(export_dir) == False: 
+    os.mkdir(export_dir)
+
+
+# NSWgov dat file mapping
+# https://www.valuergeneral.nsw.gov.au/__data/assets/pdf_file/0015/216402/Current_Property_Sales_Data_File_Format_2001_to_Current.pdf
+nswgov_dat_map = [
+    # Record: A: Header record (1 per file)
+    {'record_type':'A','variable':0,'label':'record_type'},
+    {'record_type':'A','variable':1,'label':'file_type'},
+    {'record_type':'A','variable':2,'label':'district_code'},
+    {'record_type':'A','variable':3,'label':'create_dt'},
+    {'record_type':'A','variable':4,'label':'userid'},
+    # Record: B: contain property address and sale information
+    {'record_type':'B','variable':0,'label':'record_type'},
+    {'record_type':'B','variable':1,'label':'district_code'},
+    {'record_type':'B','variable':2,'label':'property_id'},
+    {'record_type':'B','variable':3,'label':'sale_counter'},
+    {'record_type':'B','variable':4,'label':'create_dt'},
+    {'record_type':'B','variable':5,'label':'prop_name'},
+    {'record_type':'B','variable':6,'label':'unit_no'},
+    {'record_type':'B','variable':7,'label':'house_no'},
+    {'record_type':'B','variable':8,'label':'street_name'},
+    {'record_type':'B','variable':9,'label':'locality'},
+    {'record_type':'B','variable':10,'label':'postcode'},
+    {'record_type':'B','variable':11,'label':'area_sqm'},
+    {'record_type':'B','variable':12,'label':'area_type'},
+    {'record_type':'B','variable':13,'label':'contract_dt'},
+    {'record_type':'B','variable':14,'label':'settle_dt'},
+    {'record_type':'B','variable':15,'label':'sale_price'},
+    {'record_type':'B','variable':16,'label':'zoning'},
+    {'record_type':'B','variable':17,'label':'prop_nature'},
+    {'record_type':'B','variable':18,'label':'prop_purpose'},
+    {'record_type':'B','variable':19,'label':'strata_no'},
+    {'record_type':'B','variable':20,'label':'component_cd'},
+    {'record_type':'B','variable':21,'label':'sale_cd'},
+    {'record_type':'B','variable':22,'label':'sale_interest'},
+    {'record_type':'B','variable':23,'label':'dealing_no'},
+    # Record: C: property description details
+    {'record_type':'C','variable':0,'label':'record_type'},
+    {'record_type':'C','variable':1,'label':'district_code'},
+    {'record_type':'C','variable':2,'label':'property_id'},
+    {'record_type':'C','variable':3,'label':'sale_counter'},
+    {'record_type':'C','variable':4,'label':'create_dt'},
+    {'record_type':'C','variable':5,'label':'prop_desc'},
+    # Record: D: owners details suppressed
+    {'record_type':'D','variable':0,'label':'record_type'},
+    {'record_type':'D','variable':1,'label':'district_code'},
+    {'record_type':'D','variable':2,'label':'property_id'},
+    {'record_type':'D','variable':3,'label':'sale_counter'},
+    {'record_type':'D','variable':4,'label':'create_dt'},
+    {'record_type':'D','variable':5,'label':'vendor'},
+    # Record: Z: tail record
+    {'record_type':'Z','variable':0,'label':'record_type'},
+    {'record_type':'Z','variable':1,'label':'total_records'},
+    {'record_type':'Z','variable':2,'label':'records_b'},
+    {'record_type':'Z','variable':3,'label':'records_c'},
+    {'record_type':'Z','variable':4,'label':'records_d'},
+]
+
+nswgov_dat_map = pd.DataFrame(nswgov_dat_map)
 
 ## YYYY range
-yyyy_range = pd.DataFrame({'YYYY':os.listdir(diri)})
+yyyy_range = pd.DataFrame({'YYYY':os.listdir(output_dir)})
 yyyy_range = yyyy_range[yyyy_range.YYYY.str.contains('\d{4}')]
 yyyy_range.YYYY = yyyy_range.YYYY.astype(int)
 yyyy_range = yyyy_range.query('YYYY>2011')
 
 
-## record_type_mapping: from 
-dat_mapping = pd.read_csv(home_dir+'NSWGOV_dat_mapping_20180516.csv')
-# create regex extract mapping
-#dat_mapping['fillna'] = dat_mapping['fillna'].fillna('')
-#dat_mapping['fillna'] = dat_mapping['fillna'].apply(lambda x: '|'+x if x==';;' else x)
-dat_mapping['fillna'] = dat_mapping['fillna'].apply(lambda x: '' if pd.isnull(x) else '|')
-
-dat_mapping = dat_mapping.sort_values(['record_type','fieldID'])
-dat_mapping['record_type'] = dat_mapping['record_type'].str.upper()
-
-dat_mapping['field_pattern'] = '(?P<'+dat_mapping['fieldName']+'>[^;]+' + dat_mapping['fillna'] + ')'
-record_regex = dat_mapping.groupby('record_type').agg({'field_pattern':lambda x: ';'.join(x)}).reset_index()
-
 ###
-
-
 for yyyy in yyyy_range.YYYY: # yyyy =2012
     print(yyyy)
-    yyyy_dir = diri + '/' + str(yyyy)
+    # 
+    yyyy_dir = f'{output_dir}/{yyyy}'
     ymd_range = pd.DataFrame({'YMD':os.listdir(yyyy_dir)})
-    ymd_range = ymd_range[ymd_range.YMD.str.contains('(\d{8})|([A-z]+ \d{2}, \d{4})')]
-    #if ymd_range.YMD.str.contains('([A-z] \d{2}, \d{4})').sum()>0:
-    #    ymd_range.YMD = pd.to_datetime(ymd_range.YMD.str.extract('([A-z]+ \d{2}, \d{4})'),format='%B %d, %Y')
-    #    ymd_range.YMD = ymd_range.YMD.dt.strftime('%Y%m%d')
-    for ymd in ymd_range.YMD: # ymd = '20190204'
+    ymd_range = ymd_range[ymd_range.YMD.str.contains('(\d{8}).*|([A-z]+ \d{2}, \d{4}).*')]
+    ymd_range['YMD'] = ymd_range.YMD.str.strip('.zip')
+    ymd_range = ymd_range['YMD'].unique()
+    # 
+    for ymd in ymd_range: # ymd = '20190204'
         print(ymd)
-        if os.path.exists(output_dir + '/output_' + ymd+'.csv')==False:
-            ymd_dir = yyyy_dir + '/' + ymd
-            files = pd.Series(os.listdir(ymd_dir))
-            files = files[files.str.contains('.DAT')]
-            print('Files to extract: %d' % files.shape[0])
+        ymd_name = ymd 
+        if re.search('\d{8}', ymd_name) == None : 
+            ymd_name = re.sub(r' \([A-Z]+\)','',ymd_name)
+            ymd_name = datetime.datetime.strptime(ymd_name.replace(' 0',' '), '%B %d, %Y').strftime('%Y%m%d')
+        # 
+        ymd_dir = f'{yyyy_dir}/{ymd}'
+        if os.path.exists(f'{export_dir}/{ymd_name}.csv')==False:
+            print('file doesnt exist')
+            if os.path.exists(ymd_dir) ==False:
+                print('Unzip')
+                with zipfile.ZipFile(f'{ymd_dir}.zip', 'r') as zip_ref: 
+                    zip_ref.extractall(ymd_dir)
+            # 
+            week_files = pd.Series(os.listdir(ymd_dir))
+            week_files = week_files[week_files.str.contains('.DAT')]
+            if week_files.shape[0] == 0 : 
+                child_folder = np.setdiff1d(os.listdir(ymd_dir),['.DS_Store'])[0]
+                ymd_dir = f'{ymd_dir}/{child_folder}'
+                week_files = pd.Series(os.listdir(ymd_dir))
+                week_files = week_files[week_files.str.contains('.DAT')]
+            # 
             file_extract = pd.DataFrame()
-            for f in files: # f = files.iloc[0]
-                print(f)    
+            for f in week_files:  
                 ## pull data
-                with open(ymd_dir+'/'+f) as fff:
+                # data
+                with open(f'{ymd_dir}/{f}') as fff:
                     raw_dat = pd.DataFrame({'raw':pd.Series(fff.readlines())})
-                #Tag regex
-                raw_dat['record_type'] = raw_dat['raw'].str.split(';',expand=True)[0]
-                raw_dat = pd.merge(raw_dat,record_regex,on='record_type',how='left')
-                if raw_dat['field_pattern'].isnull().sum() > 0 :
-                    print("ERROR: don't have all RECORD TYPE MAPPING")
-                ## TEST extract
-                #raw_dat['raw'].loc[[1]].str.extract(raw_dat['field_pattern'].loc[1],expand=False)
-                test = raw_dat.apply(lambda x: re.findall(x['field_pattern'],x['raw']),axis=1)
-                text_extract = test.apply(lambda x: len(x))
-                if [0] in text_extract.value_counts(normalize=True).index.values and text_extract.value_counts(normalize=True).loc[0] > 0.1:
-                    print("ERROR: dont have REGEX DOWN PROPERLY")
-                ### Apply REGEX
-                extractDF = pd.DataFrame()
-                for idx in raw_dat.index.values: # idx=raw_dat.index.values[0]
-                    series = raw_dat['raw'].loc[[idx]].str.extract(raw_dat['field_pattern'].loc[idx],expand=False)
-                    extractDF = pd.concat([
-                        extractDF
-                    ,   series.reset_index().melt(id_vars = ['index','record_type'])
-                    ],axis=0,ignore_index=True)
-                extractDF['value'] = extractDF['value'].apply(lambda x: np.NaN if x=='' else x)
-                extractDF.query('record_type =="Z"')
-                #extractDF = extractDF.query('value==value')
-                extractDF['DAT'] = f
-                ## check for a pulse on extraction
-                file_extract = pd.concat([file_extract,extractDF],axis=0,ignore_index=True)
-            ## write csv
-            file_extract.to_csv(output_dir + '/output_' + ymd+'.csv',index=False)
+                # 
+                raw_dat = raw_dat.raw.str.split(';',expand=True)
+                raw_dat['record_type'] = raw_dat[0]
+                raw_dat['index'] = raw_dat.index.values
+                raw_dat2 = raw_dat.melt(id_vars = ['record_type','index'])
+                raw_dat2 = raw_dat2.query('value == value')
+                raw_dat2 = pd.merge(raw_dat2,nswgov_dat_map,on=['record_type','variable'],how='left')
+                raw_dat2['ymd'] = ymd_name
+                raw_dat2['file'] = f
+                # ÷checks
+                # raw_dat2.query('label!= label').groupby(['record_type','variable']).size()
+                # raw_dat2.query('label!= label')['value'].value_counts()
+                file_extract = pd.concat([file_extract,raw_dat2],axis=0,ignore_index=True)
+            # ## write csv
+            print(f'saving file = "{ymd_name}" with {file_extract.shape[0]} rows')
+            if file_extract.shape[0] == 0 : 
+                print('ZERO rows added, investigate')
+                break
+            file_extract.to_csv(f'{export_dir}/{ymd_name}.csv',index=False)
                 
 
 

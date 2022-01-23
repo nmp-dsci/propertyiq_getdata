@@ -7,14 +7,14 @@ export DATEID=20190614
 
 import os
 
-basedir = os.path.abspath(os.path.dirname(__file__))
+# basedir = os.path.abspath(os.path.dirname(__file__))
 
-## directories for data scrapping
-output_directory = os.environ.get('OUTPUT_DIR')
-final_dir  = output_directory + '01c Property_DF'
-master_dir = output_directory + '01e Master_DF'
+# ## directories for data scrapping
+# output_directory = os.environ.get('OUTPUT_DIR')
+# final_dir  = output_directory + '01c Property_DF'
+# master_dir = output_directory + '01e Master_DF'
 
-dateid = os.environ.get('DATEID')
+# dateid = os.environ.get('DATEID')
 
 ###############################################
 ### website

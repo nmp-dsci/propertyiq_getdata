@@ -1,0 +1,8 @@
+#pip3 install -r requirements.txt
+bs4
+pandas
+numpy
+requests
+stem
+matplotlib
+
