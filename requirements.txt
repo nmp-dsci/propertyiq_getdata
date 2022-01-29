@@ -5,4 +5,4 @@ numpy
 requests
 stem
 matplotlib
-
+openpyxl
