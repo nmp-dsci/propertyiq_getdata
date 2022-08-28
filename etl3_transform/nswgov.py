@@ -50,7 +50,7 @@ for fn in output_files:
     fn_df = fn_df.query('record_type == "B"')
     fn_df = fn_df.query('label == label')
     fn_df['index'] = fn_df['index'].astype(str)
-    fn_df2 = fn_df.groupby(['file','ymd','index','label'])['value'].max().unstack('label')
+    fn_df2 = fn_df.groupby(['file','fn_src','ymd','index','label'])['value'].max().unstack('label')
     fn_df2 = fn_df2.reset_index()
     print(f'saving file = "{fn}" with {fn_df2.shape[0]} rows')
     if fn_df2.shape[0] == 0 : 
@@ -64,3 +64,6 @@ for fn in output_files:
 print(f'saving file = {sale_df.shape[0]} rows')
 
 sale_df.to_csv(f'{output_dir}/{sourceid}_df.csv',index=False)
+
+
+
