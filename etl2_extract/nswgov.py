@@ -94,6 +94,7 @@ nswgov_dat_map = pd.DataFrame(nswgov_dat_map)
 
 
 ## YYYY range
+
 output_dir = f'{home_dir}/annual'
 
 yyyy_range = pd.DataFrame({'YYYY':os.listdir(output_dir)})

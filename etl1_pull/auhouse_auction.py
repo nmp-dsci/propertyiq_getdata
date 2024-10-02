@@ -9,41 +9,44 @@ import re,time,os,sys
 import time,datetime,math
 from bs4.element import Tag
 
-sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
+# sys.path.append('/Users/macmac/Documents/GitHub/propertyiq_getdata')
 
-from config import * 
-from utils import * 
+# from config import * 
+# from utils import * 
 
 ## set directory
 sourceid = 'auhouse_auction' 
+output_dir = f'../../data/propertyiq_getdata/{sourceid}'
 
-scrape_area_dir = output_directory + '01a Region href property/'+ sourceid 
+
+
+scrape_area_dir = output_dir 
 if os.path.exists(scrape_area_dir) == False:
     os.mkdir(scrape_area_dir)
 
-### get the suburb file to run through
-updatefile = output_directory + '01a Region href property/'+sourceid+'_'+dateid + '.csv'
-last_dateid = last_update(output_directory,dateid)
-# area_counts = get_jobs(updatefile, output_directory,last_dateid,sourceid)
+# ### get the suburb file to run through
+# updatefile = output_directory + '01a Region href property/'+sourceid+'_'+dateid + '.csv'
+# last_dateid = last_update(output_directory,dateid)
+# # area_counts = get_jobs(updatefile, output_directory,last_dateid,sourceid)
 
-area_counts = pd.read_csv(output_directory+'01e Master_DF/'+last_dateid+'_'+sourceid+'.csv')
+# area_counts = pd.read_csv(output_directory+'01e Master_DF/'+last_dateid+'_'+sourceid+'.csv')
 
-### Build driver of urls to scrape which is saturday of results
-start_yyyymmdd = pd.to_datetime(area_counts.dateID.max())
-end_yyyymmdd = pd.to_datetime('today')
+# ### Build driver of urls to scrape which is saturday of results
+# start_yyyymmdd = pd.to_datetime(area_counts.dateID.max())
+# end_yyyymmdd = pd.to_datetime('today')
 
-if os.path.exists(updatefile):
-    url_master = pd.read_csv(updatefile)
-else:
-    url_master = pd.DataFrame({'dateID':pd.date_range(start_yyyymmdd,end_yyyymmdd)})
-    url_master['DoW'] = url_master.dateID.dt.strftime('%a')
-    url_master = url_master.query('DoW == "Sat"')
-    url_master['dateID'] = url_master['dateID'].astype(str)
-    url_master['state'] = 'NSW'
-    url_master['complete'] = np.NaN
-    url_master.to_csv(updatefile, index=False)
+# if os.path.exists(updatefile):
+#     url_master = pd.read_csv(updatefile)
+# else:
+#     url_master = pd.DataFrame({'dateID':pd.date_range(start_yyyymmdd,end_yyyymmdd)})
+#     url_master['DoW'] = url_master.dateID.dt.strftime('%a')
+#     url_master = url_master.query('DoW == "Sat"')
+#     url_master['dateID'] = url_master['dateID'].astype(str)
+#     url_master['state'] = 'NSW'
+#     url_master['complete'] = np.NaN
+#     url_master.to_csv(updatefile, index=False)
 
-##
+# ##
 template_url = 'https://www.auhouseprices.com/auction/results/###STATE###/###DATEID###/###PAGEID###'
 
 
