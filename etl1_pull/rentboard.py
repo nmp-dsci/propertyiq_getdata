@@ -171,6 +171,27 @@ rent_df = rent_df.rename(columns={
 
 rent_df.to_csv(f'{scrape_area_dir}/rentboard_df.csv',index=False)
 
+#######################
 
-# rent_df = pd.read_csv(f'{scrape_area_dir}/rent_lodgement_basedf.csv')
+
+rent_df['lodgement_dt'] = pd.to_datetime(rent_df['lodgement_dt'])
+
+rent_df['lodgement_yyyymm'] = rent_df['lodgement_dt'].dt.strftime('%Y-%m')
+
+
+rent_df['weekly_rent']  = rent_df['weekly_rent'].astype(int,errors='ignore')
+
+
+
+rent_df.query('postcode ==2076 and property_type =="H"'
+).groupby('lodgement_yyyymm').weekly_rent.mean()
+
+
+rent_df.query('postcode ==2076 and property_type =="H"'
+)['weekly_rent']
+
+
+
+
+
 

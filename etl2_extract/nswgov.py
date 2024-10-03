@@ -164,3 +164,75 @@ for yyyy in yyyy_range.YYYY: # yyyy =2012
                 
 
 
+## weekly range
+
+output_dir = f'{home_dir}/weekly'
+
+yyyy_range = pd.DataFrame({'YYYY':os.listdir(output_dir)})
+yyyy_range = yyyy_range[yyyy_range.YYYY.str.contains('\d{8}')]
+yyyy_range.YYYY = yyyy_range.YYYY.astype(int)
+
+
+###
+for yyyymmdd in yyyy_range.YYYY: # yyyy =2012
+    print(yyyymmdd)
+    # 
+    yyyy_dir = f'{output_dir}/{yyyymmdd}'
+    ymd_range = pd.DataFrame({'YMD':os.listdir(yyyy_dir)})
+    ymd_range = ymd_range[ymd_range.YMD.str.contains('(\d{8}).*|([A-z]+ \d{2}, \d{4}).*')]
+    ymd_range['YMD'] = ymd_range.YMD.str.strip('.zip')
+    ymd_range = ymd_range['YMD'].unique()
+    # 
+    # for ymd in ymd_range: # ymd = '20190204'
+    #     print(ymd)
+    #     ymd_name = ymd 
+    #     if re.search('\d{8}', ymd_name) == None : 
+    #         ymd_name = re.sub(r' \([A-Z]+\)','',ymd_name)
+    #         ymd_name = datetime.datetime.strptime(ymd_name.replace(' 0',' '), '%B %d, %Y').strftime('%Y%m%d')
+    #     # 
+    #     ymd_dir = f'{yyyy_dir}/{ymd}'
+    #     if os.path.exists(f'{export_dir}/{ymd_name}.csv')==False:
+    #         print('file doesnt exist')
+    #         if os.path.exists(ymd_dir) ==False:
+    #             print('Unzip')
+    #             with zipfile.ZipFile(f'{ymd_dir}.zip', 'r') as zip_ref: 
+    #                 zip_ref.extractall(ymd_dir)
+    #         # 
+    week_files = pd.Series(os.listdir(yyyy_dir))
+    week_files = week_files[week_files.str.contains('.DAT')]
+    if week_files.shape[0] == 0 : 
+        child_folder = np.setdiff1d(os.listdir(yyyy_dir),['.DS_Store'])[0]
+        yyyy_dir = f'{yyyy_dir}/{child_folder}'
+        week_files = pd.Series(os.listdir(yyyy_dir))
+        week_files = week_files[week_files.str.contains('.DAT')]
+    # 
+    file_extract = pd.DataFrame()
+    for f in week_files:  
+        ## pull data
+        # data
+        with open(f'{yyyy_dir}/{f}') as fff:
+            raw_dat = pd.DataFrame({'raw':pd.Series(fff.readlines())})
+        # 
+        raw_dat = raw_dat.raw.str.split(';',expand=True)
+        raw_dat['record_type'] = raw_dat[0]
+        raw_dat['index'] = raw_dat.index.values
+        raw_dat2 = raw_dat.melt(id_vars = ['record_type','index'])
+        raw_dat2 = raw_dat2.query('value == value')
+        raw_dat2 = pd.merge(raw_dat2,nswgov_dat_map,on=['record_type','variable'],how='left')
+        raw_dat2['ymd'] = ymd_name
+        raw_dat2['file'] = f
+        # ÷checks
+        # raw_dat2.query('label!= label').groupby(['record_type','variable']).size()
+        # raw_dat2.query('label!= label')['value'].value_counts()
+        file_extract = pd.concat([file_extract,raw_dat2],axis=0,ignore_index=True)
+    # ## write csv
+    print(f'saving file = "{yyyymmdd}" with {file_extract.shape[0]} rows')
+    output_etl2 = f'{export_dir}/{yyyymmdd}.csv'
+    if file_extract.shape[0] == 0 : 
+        print('ZERO rows added, investigate')
+        break
+    if os.path.exists(output_etl2) == False:
+        file_extract.to_csv(output_etl2,index=False)
+                    
+
+
