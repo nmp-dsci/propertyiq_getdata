@@ -150,14 +150,14 @@ latest_yyyy_df.to_csv(dir_csv_yyyy,index=False)
 
 
 dir_files = pd.DataFrame({'filename':os.listdir(scrape_area_dir)})
-dir_files['yyyy'] = dir_files.filename.str.extract('^(\d+).xlsx')
+dir_files['yyyy'] = dir_files.filename.str.extract('^(\d+).csv')
 dir_files = dir_files.query('yyyy==yyyy')
 
 rent_df = pd.DataFrame(columns = csvColumns)
 
 for yyyy  in dir_files.yyyy: 
-    print(f'Build base table:{periodID} for value:{yyyy}')
-    dir_csv = f'{scrape_area_dir}/{href.get("regex_value")}.csv'
+    print(f'Build base table:{yyyy}')
+    dir_csv = f'{scrape_area_dir}/{yyyy}.csv'
     xlsx_df = pd.read_csv(dir_csv)
     rent_df = rent_df.append(xlsx_df)
 
