@@ -1,0 +1,23 @@
+[project]
+name = "propertyiq-getdata"
+version = "0.1.0"
+description = "ETL scripts for NSW property sales and rental bond data."
+requires-python = ">=3.10"
+dependencies = [
+  "beautifulsoup4",
+  "matplotlib",
+  "numpy",
+  "openpyxl",
+  "pandas",
+  "requests",
+  "stem",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,1 +1,9 @@
 globals.sh
+.venv/
+.lavish/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.csv
+# Local data is stored outside git, currently in Google Drive.
+/data/

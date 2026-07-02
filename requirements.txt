@@ -1,8 +1,9 @@
-#pip3 install -r requirements.txt
-bs4
-pandas
+# pip install -r requirements.txt
+beautifulsoup4
+matplotlib
 numpy
+openpyxl
+pandas
+pytest
 requests
 stem
-matplotlib
-openpyxl
