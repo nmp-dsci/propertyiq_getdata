@@ -10,6 +10,7 @@ reusable pipeline mechanics (paths, manifests, atomic IO) under
 """
 
 from .audit import audit_outputs, print_audit
+from .sources.abs import update_abs
 from .sources.nswgov import update_nswgov
 from .sources.rentboard import update_rentboard
 
@@ -17,6 +18,7 @@ __all__ = [
     "__version__",
     "audit_outputs",
     "print_audit",
+    "update_abs",
     "update_nswgov",
     "update_rentboard",
 ]

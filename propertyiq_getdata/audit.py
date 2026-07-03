@@ -67,6 +67,9 @@ def audit_outputs(data_dir: str | Path | None = None) -> dict[str, Any]:
             "manifest": manifest_summary(paths.rentboard_manifest),
             "legacy_csv": csv_summary(paths.rentboard_final, date_column="lodgement_dt"),
         },
+        "abs": {
+            "manifest": manifest_summary(paths.abs_poa_manifest),
+        },
     }
 
 
