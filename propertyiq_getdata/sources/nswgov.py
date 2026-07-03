@@ -12,7 +12,9 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-from .paths import get_paths
+from ..core.io import atomic_write_csv
+from ..core.manifest import write_manifest
+from ..core.paths import get_paths
 
 
 SOURCE_URL = "https://valuation.property.nsw.gov.au/embed/propertySalesInformation"
@@ -149,7 +151,22 @@ def fetch_links(session: requests.Session | None = None) -> pd.DataFrame:
 
 
 def latest_final_period(data_dir: str | Path | None = None) -> str | None:
-    final_path = get_paths(data_dir).nswgov_final
+    paths = get_paths(data_dir)
+    if paths.nswgov_manifest.exists():
+        manifest = pd.read_csv(paths.nswgov_manifest, usecols=["period_end"], dtype=str)
+        periods = manifest["period_end"].dropna().str.replace("-", "", regex=False)
+        if not periods.empty:
+            return str(periods.max())
+
+    partition_periods = [
+        match.group(1)
+        for path in paths.nswgov_sales_dir.glob("period=*.csv")
+        if (match := re.fullmatch(r"period=(\d{8})\.csv", path.name))
+    ]
+    if partition_periods:
+        return max(partition_periods)
+
+    final_path = paths.nswgov_final
     if not final_path.exists():
         return None
     final_df = pd.read_csv(final_path, usecols=["fn_src"], dtype=str)
@@ -157,6 +174,34 @@ def latest_final_period(data_dir: str | Path | None = None) -> str | None:
     if periods.empty:
         return None
     return str(periods.max())
+
+
+def nswgov_partition_path(data_dir: str | Path | None, ymd: str) -> Path:
+    return get_paths(data_dir).nswgov_sales_dir / f"period={ymd}.csv"
+
+
+def discover_nswgov_partitions(data_dir: str | Path | None = None) -> list[tuple[Path, str, str]]:
+    paths = get_paths(data_dir)
+    partitions = []
+    for path in paths.nswgov_sales_dir.glob("period=*.csv"):
+        match = re.fullmatch(r"period=(\d{8})\.csv", path.name)
+        if not match:
+            continue
+        ymd = match.group(1)
+        period = dt.datetime.strptime(ymd, "%Y%m%d").strftime("%Y-%m-%d")
+        partitions.append((path, period, period))
+    return partitions
+
+
+def refresh_nswgov_manifest(data_dir: str | Path | None = None) -> pd.DataFrame:
+    paths = get_paths(data_dir)
+    return write_manifest(
+        data_dir=paths.data_dir,
+        manifest_path=paths.nswgov_manifest,
+        source=SOURCE_ID,
+        dataset="sales",
+        partitions=discover_nswgov_partitions(data_dir=data_dir),
+    )
 
 
 def filter_new_links(links: pd.DataFrame, latest_period: str | None) -> pd.DataFrame:
@@ -335,22 +380,19 @@ def transform_nswgov(data_dir: str | Path | None = None) -> pd.DataFrame:
     paths = get_paths(data_dir)
     paths.ensure_base_dirs()
     input_dir = paths.nswgov_etl2_dir()
-    output_path = paths.nswgov_final
     if not input_dir.exists():
         raise RuntimeError(f"Missing ETL2 directory {input_dir}; run nswgov extract first.")
     etl2_files = sorted(path for path in input_dir.glob("*.csv"))
     if not etl2_files:
         raise RuntimeError(f"No ETL2 CSV files found in {input_dir}.")
 
-    if output_path.exists():
-        print("EXISTING")
-        processed = set(pd.read_csv(output_path, usecols=["fn_src"], dtype=str)["fn_src"].dropna().unique())
-    else:
-        print("NEW")
-        processed = set()
-
+    processed = {
+        path.name.replace("period=", "")
+        for path in paths.nswgov_sales_dir.glob("period=*.csv")
+        if re.fullmatch(r"period=\d{8}\.csv", path.name)
+    }
     new_files = [path for path in etl2_files if path.name not in processed]
-    first_write = not output_path.exists()
+    statuses = []
     for etl2_path in new_files:
         print(etl2_path.name)
         fn_df = pd.read_csv(etl2_path, dtype=str)
@@ -358,12 +400,57 @@ def transform_nswgov(data_dir: str | Path | None = None) -> pd.DataFrame:
         print(f'saving file = "{etl2_path.name}" with {fn_df2.shape[0]} rows')
         if fn_df2.shape[0] == 0:
             raise RuntimeError(f"ZERO rows added for {etl2_path.name}; investigate source layout.")
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        fn_df2.to_csv(output_path, mode="w" if first_write else "a", header=first_write, index=False)
-        first_write = False
+        ymd = etl2_path.stem
+        output_path = atomic_write_csv(fn_df2, nswgov_partition_path(data_dir, ymd))
+        statuses.append({"period": ymd, "path": str(output_path), "rows": int(fn_df2.shape[0]), "status": "written"})
 
-    print(f"saving file = {output_path}")
-    return pd.DataFrame({"fn_src": [path.name for path in new_files], "status": "added"})
+    manifest = refresh_nswgov_manifest(data_dir=data_dir)
+    print(f"saving manifest = {paths.nswgov_manifest} with {manifest.shape[0]} partitions")
+    return pd.DataFrame(statuses, columns=["period", "path", "rows", "status"])
+
+
+def export_legacy_nswgov(data_dir: str | Path | None = None) -> pd.DataFrame:
+    paths = get_paths(data_dir)
+    partitions = discover_nswgov_partitions(data_dir=data_dir)
+    if not partitions:
+        raise RuntimeError(f"No NSWGOV partitions found under {paths.nswgov_sales_dir}; run nswgov transform first.")
+
+    first_write = True
+    rows = 0
+    paths.nswgov_final.parent.mkdir(parents=True, exist_ok=True)
+    for partition_path, _, _ in sorted(partitions, key=lambda item: item[1]):
+        frame = pd.read_csv(partition_path, dtype=str)
+        rows += int(frame.shape[0])
+        frame.to_csv(paths.nswgov_final, mode="w" if first_write else "a", header=first_write, index=False)
+        first_write = False
+    print(f"saving legacy file = {paths.nswgov_final} with {rows} rows")
+    return pd.DataFrame([{"path": str(paths.nswgov_final), "rows": rows, "status": "written"}])
+
+
+def migrate_legacy_nswgov(data_dir: str | Path | None = None) -> pd.DataFrame:
+    paths = get_paths(data_dir)
+    if not paths.nswgov_final.exists():
+        raise RuntimeError(f"Missing legacy NSWGOV CSV {paths.nswgov_final}")
+
+    for existing_partition, _, _ in discover_nswgov_partitions(data_dir=data_dir):
+        existing_partition.unlink()
+
+    statuses = []
+    for frame in pd.read_csv(paths.nswgov_final, dtype=str, chunksize=100_000):
+        for fn_src, group in frame.groupby("fn_src", sort=True):
+            match = re.fullmatch(r"(\d{8})\.csv", str(fn_src))
+            if not match:
+                continue
+            ymd = match.group(1)
+            output_path = nswgov_partition_path(data_dir, ymd)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            mode = "a" if output_path.exists() else "w"
+            group.to_csv(output_path, mode=mode, header=mode == "w", index=False)
+
+    for partition_path, period_start, _ in discover_nswgov_partitions(data_dir=data_dir):
+        statuses.append({"period": period_start.replace("-", ""), "path": str(partition_path), "status": "written"})
+    refresh_nswgov_manifest(data_dir=data_dir)
+    return pd.DataFrame(statuses)
 
 
 def update_nswgov(data_dir: str | Path | None = None, dry_run: bool = False, new_only: bool = True) -> None:

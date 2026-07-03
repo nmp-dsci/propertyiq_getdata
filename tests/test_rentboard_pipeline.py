@@ -2,7 +2,7 @@ from io import BytesIO
 
 import pandas as pd
 
-from propertyiq_getdata.rentboard import (
+from propertyiq_getdata.sources.rentboard import (
     discover_links,
     normalize_rentboard_frame,
     prefer_monthly_when_available,
@@ -103,7 +103,7 @@ def make_rentboard_xlsx_bytes():
     return output.getvalue()
 
 
-def test_update_rentboard_appends_rows_after_existing_max_date(tmp_path):
+def test_update_rentboard_writes_new_monthly_partition_after_existing_max_date(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     final_path = data_dir / "rentboard_df.csv"
@@ -119,8 +119,16 @@ def test_update_rentboard_appends_rows_after_existing_max_date(tmp_path):
     """
 
     status = update_rentboard(data_dir=data_dir, session=FakeSession(html, make_rentboard_xlsx_bytes()))
-    result = pd.read_csv(final_path, dtype=str)
+    partition = data_dir / "normalized" / "rentboard" / "lodgements" / "year=2024" / "month=09.csv"
+    result = pd.read_csv(partition, dtype=str)
+    manifest = pd.read_csv(data_dir / "manifests" / "rentboard_lodgements_manifest.csv", dtype=str)
 
     assert status["new_rows"].tolist() == [1]
-    assert result["lodgement_dt"].tolist() == ["2024-08-31", "2024-09-01"]
-    assert result["weekly_rent"].tolist() == ["550", "600"]
+    assert status["partitions_written"].tolist() == [1]
+    assert result["lodgement_dt"].tolist() == ["2024-09-01"]
+    assert result["weekly_rent"].tolist() == ["600"]
+    assert manifest["period_end"].tolist() == ["2024-09-30"]
+    assert final_path.read_text(encoding="utf-8").splitlines() == [
+        "lodgement_dt,postcode,property_type,bedrooms,weekly_rent",
+        "2024-08-31,2000,F,2,550",
+    ]

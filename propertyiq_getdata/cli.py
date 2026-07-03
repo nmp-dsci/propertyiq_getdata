@@ -3,8 +3,21 @@ from __future__ import annotations
 import argparse
 
 from .audit import print_audit
-from .nswgov import extract_nswgov, pull_nswgov, transform_nswgov, update_nswgov
-from .rentboard import update_rentboard
+from .sources.nswgov import (
+    export_legacy_nswgov,
+    extract_nswgov,
+    migrate_legacy_nswgov,
+    pull_nswgov,
+    refresh_nswgov_manifest,
+    transform_nswgov,
+    update_nswgov,
+)
+from .sources.rentboard import (
+    export_legacy_rentboard,
+    migrate_legacy_rentboard,
+    refresh_rentboard_manifest,
+    update_rentboard,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,6 +38,9 @@ def build_parser() -> argparse.ArgumentParser:
     nswgov_extract = nswgov_sub.add_parser("extract", parents=[data_parent])
     nswgov_extract.add_argument("--all-periods", action="store_true", help="Extract every raw period instead of periods needed after the trusted final CSV.")
     nswgov_sub.add_parser("transform", parents=[data_parent])
+    nswgov_sub.add_parser("manifest", parents=[data_parent], help="Rebuild the NSWGOV partition manifest.")
+    nswgov_sub.add_parser("migrate-legacy", parents=[data_parent], help="Split the old nswgov_df.csv into period partitions.")
+    nswgov_sub.add_parser("export-legacy", parents=[data_parent], help="Stack NSWGOV partitions into the old nswgov_df.csv shape.")
     nswgov_update = nswgov_sub.add_parser("update", parents=[data_parent])
     nswgov_update.add_argument("--all-periods", action="store_true", help="Download every discovered period instead of periods needed after the trusted final CSV.")
     nswgov_update.add_argument("--dry-run", action="store_true")
@@ -33,6 +49,9 @@ def build_parser() -> argparse.ArgumentParser:
     rentboard_sub = rentboard.add_subparsers(dest="stage", required=True)
     rentboard_update = rentboard_sub.add_parser("update", parents=[data_parent])
     rentboard_update.add_argument("--dry-run", action="store_true")
+    rentboard_sub.add_parser("manifest", parents=[data_parent], help="Rebuild the rentboard partition manifest.")
+    rentboard_sub.add_parser("migrate-legacy", parents=[data_parent], help="Split the old rentboard_df.csv into monthly partitions.")
+    rentboard_sub.add_parser("export-legacy", parents=[data_parent], help="Stack rentboard partitions into the old rentboard_df.csv shape.")
     return parser
 
 
@@ -59,10 +78,29 @@ def main(argv: list[str] | None = None) -> int:
         if args.stage == "transform":
             print(transform_nswgov(data_dir=args.data_dir).to_string(index=False))
             return 0
+        if args.stage == "manifest":
+            print(refresh_nswgov_manifest(data_dir=args.data_dir).to_string(index=False))
+            return 0
+        if args.stage == "migrate-legacy":
+            print(migrate_legacy_nswgov(data_dir=args.data_dir).to_string(index=False))
+            return 0
+        if args.stage == "export-legacy":
+            print(export_legacy_nswgov(data_dir=args.data_dir).to_string(index=False))
+            return 0
         if args.stage == "update":
             update_nswgov(data_dir=args.data_dir, dry_run=args.dry_run, new_only=not args.all_periods)
             return 0
-    if args.command == "rentboard" and args.stage == "update":
-        print(update_rentboard(data_dir=args.data_dir, dry_run=args.dry_run).to_string(index=False))
-        return 0
+    if args.command == "rentboard":
+        if args.stage == "update":
+            print(update_rentboard(data_dir=args.data_dir, dry_run=args.dry_run).to_string(index=False))
+            return 0
+        if args.stage == "manifest":
+            print(refresh_rentboard_manifest(data_dir=args.data_dir).to_string(index=False))
+            return 0
+        if args.stage == "migrate-legacy":
+            print(migrate_legacy_rentboard(data_dir=args.data_dir).to_string(index=False))
+            return 0
+        if args.stage == "export-legacy":
+            print(export_legacy_rentboard(data_dir=args.data_dir).to_string(index=False))
+            return 0
     raise RuntimeError(f"Unhandled command: {args}")

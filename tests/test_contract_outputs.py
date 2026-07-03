@@ -39,6 +39,7 @@ NSWGOV_COLUMNS = [
 ]
 
 RENTBOARD_COLUMNS = ["lodgement_dt", "postcode", "property_type", "bedrooms", "weekly_rent"]
+MANIFEST_COLUMNS = ["source", "dataset", "period_start", "period_end", "path", "rows", "sha256", "created_at_utc"]
 
 
 def summarize_csv(path, date_column):
@@ -58,6 +59,15 @@ def summarize_csv(path, date_column):
 
 
 def test_trusted_nswgov_csv_contract():
+    manifest_path = REPO_ROOT / "data" / "manifests" / "nswgov_sales_manifest.csv"
+    if manifest_path.exists():
+        columns, partitions, max_period_end = summarize_csv(manifest_path, "period_end")
+
+        assert columns == MANIFEST_COLUMNS
+        assert partitions >= 100
+        assert max_period_end >= "2026-06-29"
+        return
+
     columns, rows, max_fn_src = summarize_csv(REPO_ROOT / "data" / "nswgov_df.csv", "fn_src")
 
     assert columns == NSWGOV_COLUMNS
@@ -66,6 +76,15 @@ def test_trusted_nswgov_csv_contract():
 
 
 def test_trusted_rentboard_csv_contract():
+    manifest_path = REPO_ROOT / "data" / "manifests" / "rentboard_lodgements_manifest.csv"
+    if manifest_path.exists():
+        columns, partitions, max_period_end = summarize_csv(manifest_path, "period_end")
+
+        assert columns == MANIFEST_COLUMNS
+        assert partitions >= 1
+        assert max_period_end >= "2026-05-31"
+        return
+
     columns, rows, max_lodgement_dt = summarize_csv(REPO_ROOT / "data" / "rentboard_df.csv", "lodgement_dt")
 
     assert columns == RENTBOARD_COLUMNS

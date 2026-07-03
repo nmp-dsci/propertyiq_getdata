@@ -1,6 +1,6 @@
 import pandas as pd
 
-from propertyiq_getdata.nswgov import (
+from propertyiq_getdata.sources.nswgov import (
     discover_links,
     filter_new_links,
     infer_dat_ymd,
@@ -74,12 +74,13 @@ def test_parse_dat_file_and_transform_to_final_schema(tmp_path):
     assert wide.loc[0, "ymd"] == "20260105"
 
 
-def test_transform_nswgov_appends_only_unprocessed_etl2_files(tmp_path):
+def test_transform_nswgov_writes_only_missing_partitions(tmp_path):
     data_dir = tmp_path / "data"
     etl2_dir = data_dir / "interim" / "nswgov" / "output_etl2"
     etl2_dir.mkdir(parents=True)
-    final_path = data_dir / "nswgov_df.csv"
-    final_path.write_text(
+    existing_partition = data_dir / "normalized" / "nswgov" / "sales" / "period=20250101.csv"
+    existing_partition.parent.mkdir(parents=True)
+    existing_partition.write_text(
         "file,fn_src,ymd,index,area_sqm,area_type,component_cd,contract_dt,create_dt,dealing_no,district_code,house_no,locality,postcode,prop_name,prop_nature,prop_purpose,property_id,record_type,sale_cd,sale_counter,sale_interest,sale_price,settle_dt,strata_no,street_name,unit_no,zoning\n"
         "old.DAT,20250101.csv,20250101,1,,,,20250101,20250101 01:10,,1,1,SYDNEY,2000,,R,RESIDENCE,1,B,,1,0,1,20250102,,,,\n",
         encoding="utf-8",
@@ -124,8 +125,10 @@ def test_transform_nswgov_appends_only_unprocessed_etl2_files(tmp_path):
     new.to_csv(etl2_dir / "20260105.csv", index=False)
 
     status = transform_nswgov(data_dir=data_dir)
-    result = pd.read_csv(final_path, dtype=str)
+    result = pd.read_csv(data_dir / "normalized" / "nswgov" / "sales" / "period=20260105.csv", dtype=str)
+    manifest = pd.read_csv(data_dir / "manifests" / "nswgov_sales_manifest.csv", dtype=str)
 
-    assert status["fn_src"].tolist() == ["20260105.csv"]
-    assert result["fn_src"].tolist() == ["20250101.csv", "20260105.csv"]
-    assert result.loc[result["fn_src"] == "20260105.csv", "sale_price"].iloc[0] == "2000000"
+    assert status["period"].tolist() == ["20260105"]
+    assert result["fn_src"].tolist() == ["20260105.csv"]
+    assert result.loc[0, "sale_price"] == "2000000"
+    assert manifest["period_end"].tolist() == ["2025-01-01", "2026-01-05"]

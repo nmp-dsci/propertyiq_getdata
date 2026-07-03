@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en" data-theme="luxury">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>propertyiq_getdata Refactor Plan</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      securityLevel: "strict",
+      themeVariables: {
+        primaryColor: "#171212",
+        primaryTextColor: "#f6efe5",
+        primaryBorderColor: "#b6a174",
+        lineColor: "#b6a174",
+        secondaryColor: "#2a211c",
+        tertiaryColor: "#3b3026",
+        fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+      }
+    });
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :where(.grid, .flex) > * { min-width: 0; }
+    :where(p, h1, h2, h3, h4, h5, h6, li, td, th, .badge, .label) { overflow-wrap: anywhere; }
+    :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+    .evidence-code { font-size: 0.82rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body class="bg-base-200 text-base-content">
+  <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+    <section class="mb-8">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div class="mb-3 flex flex-wrap gap-2">
+            <span class="badge badge-primary badge-soft">Branch: refactor/nswgov-rentboard-split-outputs</span>
+            <span class="badge badge-info badge-soft">Plan before destructive cleanup</span>
+            <span class="badge badge-success badge-soft">Active sources only</span>
+          </div>
+          <h1 class="text-3xl font-bold tracking-normal sm:text-4xl">Refactor propertyiq_getdata around partitioned source outputs</h1>
+          <p class="mt-3 max-w-4xl text-base-content/75">
+            The collection repo should stop behaving like a downstream analytics store. Its job should be to fetch public
+            source files, normalize each new period independently, and hand stable partitions plus manifests to the database
+            project that does cleaning and serving.
+          </p>
+        </div>
+        <div class="stats stats-vertical shadow lg:stats-horizontal">
+          <div class="stat">
+            <div class="stat-title">Current NSW final</div>
+            <div class="stat-value text-2xl">585 MB</div>
+            <div class="stat-desc">one CSV, 3.09M rows</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Current Rent final</div>
+            <div class="stat-value text-2xl">80 MB</div>
+            <div class="stat-desc">one CSV, 3.31M rows</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Legacy tree</div>
+            <div class="stat-value text-2xl">large</div>
+            <div class="stat-desc">tracked scripts not used</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 grid gap-4 lg:grid-cols-3">
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">Goal</h2>
+          <p class="text-base-content/75">
+            Keep only the actively maintained NSW Valuer General and NSW Rental Bond collectors, and change final outputs
+            from append-only monoliths to period-level files with a manifest.
+          </p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">Constraint</h2>
+          <p class="text-base-content/75">
+            Downstream cleaning belongs in the database project, so this repo should preserve source-shaped normalized
+            records, not denormalize or aggregate for product use.
+          </p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">Recommendation</h2>
+          <p class="text-base-content/75">
+            Use CSV partitions first. It avoids new dependencies, works with existing Drive storage, and is easy for a DB
+            loader to upsert by source and period.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 card card-border bg-base-100">
+      <div class="card-body">
+        <h2 class="card-title">Current Versus Target Flow</h2>
+        <div class="overflow-x-auto rounded-box bg-base-200 p-4">
+          <pre class="mermaid">
+flowchart TB
+  subgraph current["Current collection flow"]
+    A["Source page"] --> B["raw downloads"]
+    B --> C["interim ETL2 CSVs"]
+    C --> D["data/nswgov_df.csv<br/>data/rentboard_df.csv"]
+    D --> E["database project reads giant table"]
+  end
+  subgraph target["Target collection flow"]
+    F["Source page"] --> G["raw downloads"]
+    G --> H["normalized period partitions"]
+    H --> I["manifest.csv + latest pointer"]
+    I --> J["database project loads changed partitions"]
+  end
+          </pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 grid gap-4 lg:grid-cols-2">
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">Output Layout</h2>
+          <p class="text-base-content/75">Proposed local and Drive data contract:</p>
+          <div class="mockup-code mt-3 text-sm">
+            <pre data-prefix=" "><code>data/
+  raw/
+    nswgov/...
+    rentboard/...
+  normalized/
+    nswgov/sales/period=20260629.csv
+    rentboard/lodgements/year=2026/month=05.csv
+  manifests/
+    nswgov_sales_manifest.csv
+    rentboard_lodgements_manifest.csv
+  legacy/
+    nswgov_df.csv        # optional compatibility export
+    rentboard_df.csv     # optional compatibility export</code></pre>
+          </div>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">Manifest Columns</h2>
+          <div class="overflow-x-auto rounded-box border border-base-content/10">
+            <table class="table table-zebra table-sm">
+              <thead>
+                <tr><th>Column</th><th>Purpose</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>source</code></td><td><code>nswgov</code> or <code>rentboard</code></td></tr>
+                <tr><td><code>dataset</code></td><td><code>sales</code> or <code>lodgements</code></td></tr>
+                <tr><td><code>period_start</code></td><td>date the partition represents</td></tr>
+                <tr><td><code>period_end</code></td><td>inclusive end date for DB watermarks</td></tr>
+                <tr><td><code>path</code></td><td>relative partition path</td></tr>
+                <tr><td><code>rows</code></td><td>row count after normalization</td></tr>
+                <tr><td><code>sha256</code></td><td>change detection without rereading all data</td></tr>
+                <tr><td><code>created_at_utc</code></td><td>pipeline run provenance</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="mb-4 text-2xl font-bold">Implementation Plan</h2>
+      <ul class="steps steps-vertical w-full lg:steps-horizontal">
+        <li class="step step-primary">Freeze contracts</li>
+        <li class="step step-primary">Partition writers</li>
+        <li class="step step-primary">CLI cleanup</li>
+        <li class="step step-primary">Repo pruning</li>
+        <li class="step step-primary">Migration docs</li>
+      </ul>
+      <div class="mt-4 grid gap-4 lg:grid-cols-5">
+        <div class="card card-border bg-base-100"><div class="card-body"><h3 class="font-semibold">1. Freeze contracts</h3><p class="text-sm text-base-content/75">Move expected columns into source modules and add tests for partition names, schemas, and manifests.</p></div></div>
+        <div class="card card-border bg-base-100"><div class="card-body"><h3 class="font-semibold">2. Partition writers</h3><p class="text-sm text-base-content/75">Replace final append logic with idempotent writes per period, using temp files then atomic replace.</p></div></div>
+        <div class="card card-border bg-base-100"><div class="card-body"><h3 class="font-semibold">3. CLI cleanup</h3><p class="text-sm text-base-content/75">Expose <code>update</code>, <code>audit</code>, <code>export-legacy</code>, and <code>manifest</code> commands.</p></div></div>
+        <div class="card card-border bg-base-100"><div class="card-body"><h3 class="font-semibold">4. Repo pruning</h3><p class="text-sm text-base-content/75">Delete historical scrapers, website scaffold, bytecode, old run scripts, and inactive ETL stages.</p></div></div>
+        <div class="card card-border bg-base-100"><div class="card-body"><h3 class="font-semibold">5. Migration docs</h3><p class="text-sm text-base-content/75">Document the new Drive layout and downstream DB loader contract.</p></div></div>
+      </div>
+    </section>
+
+    <section class="mb-8 grid gap-4 lg:grid-cols-2">
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">What To Keep</h2>
+          <div class="overflow-x-auto rounded-box border border-base-content/10">
+            <table class="table table-sm table-zebra">
+              <thead><tr><th>Path</th><th>Reason</th></tr></thead>
+              <tbody>
+                <tr><td><code>propertyiq_getdata/</code></td><td>Current implementation modules.</td></tr>
+                <tr><td><code>tests/</code></td><td>Regression coverage for source parsing and output contracts.</td></tr>
+                <tr><td><code>scripts/data_*.sh</code></td><td>Still useful for Drive pull/push, after path updates.</td></tr>
+                <tr><td><code>pyproject.toml</code>, <code>requirements.txt</code></td><td>Project packaging and dependencies.</td></tr>
+                <tr><td><code>README.md</code>, <code>AGENTS.md</code></td><td>Operational docs and agent context.</td></tr>
+                <tr><td><code>etl1_pull/nswgov.py</code>, <code>etl1_pull/rentboard.py</code></td><td>Optional temporary shims; remove after README and habits move to CLI.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">What To Remove</h2>
+          <div class="overflow-x-auto rounded-box border border-base-content/10">
+            <table class="table table-sm table-zebra">
+              <thead><tr><th>Path</th><th>Reason</th></tr></thead>
+              <tbody>
+                <tr><td><code>etl1_pull/REA*.py</code>, <code>domain*.py</code>, <code>auhouse_*.py</code></td><td>Historical scrapers, not maintained.</td></tr>
+                <tr><td><code>etl2_extract/REA.py</code>, <code>domain.py</code>, <code>auhouse_*.py</code></td><td>Inactive extract stages.</td></tr>
+                <tr><td><code>etl3_transform/REA.py</code>, <code>domain.py</code>, <code>auhouse_*.py</code></td><td>Inactive transform stages.</td></tr>
+                <tr><td><code>etl4_load/</code></td><td>Legacy DB/master-table work now belongs downstream.</td></tr>
+                <tr><td><code>website/</code>, <code>investigations/</code>, <code>utils/</code></td><td>Historical experiments and unused Flask scaffold.</td></tr>
+                <tr><td><code>__pycache__/</code>, <code>.DS_Store</code></td><td>Generated artifacts should not be tracked.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 card card-border bg-base-100">
+      <div class="card-body">
+        <h2 class="card-title">Output Strategy Options</h2>
+        <div class="grid gap-4 lg:grid-cols-3">
+          <div class="rounded-box border border-success/40 bg-success/10 p-4">
+            <div class="mb-2 flex items-center gap-2"><span class="badge badge-success">Recommended</span><h3 class="font-semibold">CSV partitions + manifest</h3></div>
+            <p class="text-sm text-base-content/75">Lowest risk. Keeps dependencies stable and lets the DB project load changed periods only.</p>
+          </div>
+          <div class="rounded-box border border-base-content/15 bg-base-200 p-4">
+            <div class="mb-2 flex items-center gap-2"><span class="badge badge-warning">Later</span><h3 class="font-semibold">Parquet partitions</h3></div>
+            <p class="text-sm text-base-content/75">Smaller and faster, but adds <code>pyarrow</code> and changes the storage contract more sharply.</p>
+          </div>
+          <div class="rounded-box border border-error/40 bg-error/10 p-4">
+            <div class="mb-2 flex items-center gap-2"><span class="badge badge-error">Avoid</span><h3 class="font-semibold">Keep giant CSV primary</h3></div>
+            <p class="text-sm text-base-content/75">Keeps current behavior, but every update and audit stays tied to scanning or appending huge files.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 grid gap-4 lg:grid-cols-2">
+      <div class="alert alert-warning">
+        <span>
+          Compatibility risk: any downstream job that expects <code>data/nswgov_df.csv</code> and <code>data/rentboard_df.csv</code>
+          needs either a migration or an explicit <code>export-legacy</code> step during transition.
+        </span>
+      </div>
+      <div class="alert alert-info">
+        <span>
+          Drive risk: <code>rclone</code> is installed locally but not configured here, so Drive path changes should be tested after
+          credentials are available.
+        </span>
+      </div>
+    </section>
+
+    <section class="card card-border bg-base-100">
+      <div class="card-body">
+        <h2 class="card-title">Verified Evidence</h2>
+        <div class="grid gap-4 lg:grid-cols-2">
+          <div class="mockup-code">
+            <pre data-prefix="$"><code>git branch --show-current</code></pre>
+            <pre data-prefix=">"><code>refactor/nswgov-rentboard-split-outputs</code></pre>
+          </div>
+          <div class="mockup-code">
+            <pre data-prefix="$"><code>du -sh data/nswgov_df.csv data/rentboard_df.csv</code></pre>
+            <pre data-prefix=">"><code>585M data/nswgov_df.csv
+80M  data/rentboard_df.csv</code></pre>
+          </div>
+          <div class="mockup-code">
+            <pre data-prefix="$"><code>python -m propertyiq_getdata audit --data-dir data</code></pre>
+            <pre data-prefix=">"><code>nswgov max_fn_src: 20260629.csv
+rentboard max_lodgement_dt: 2026-05-31</code></pre>
+          </div>
+          <div class="mockup-code">
+            <pre data-prefix="$"><code>git ls-files</code></pre>
+            <pre data-prefix=">"><code>includes legacy etl4_load, website,
+investigations, utils, and inactive scrapers</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

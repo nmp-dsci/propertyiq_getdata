@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+# This file lives at <repo>/propertyiq_getdata/core/paths.py, so the repo root
+# is three levels up.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
@@ -19,6 +21,26 @@ class PipelinePaths:
     @property
     def rentboard_final(self) -> Path:
         return self.data_dir / "rentboard_df.csv"
+
+    @property
+    def manifests_dir(self) -> Path:
+        return self.data_dir / "manifests"
+
+    @property
+    def nswgov_sales_dir(self) -> Path:
+        return self.data_dir / "normalized" / "nswgov" / "sales"
+
+    @property
+    def rentboard_lodgements_dir(self) -> Path:
+        return self.data_dir / "normalized" / "rentboard" / "lodgements"
+
+    @property
+    def nswgov_manifest(self) -> Path:
+        return self.manifests_dir / "nswgov_sales_manifest.csv"
+
+    @property
+    def rentboard_manifest(self) -> Path:
+        return self.manifests_dir / "rentboard_lodgements_manifest.csv"
 
     def raw_source_dir(self, sourceid: str) -> Path:
         return self.data_dir / "raw" / sourceid
@@ -35,6 +57,9 @@ class PipelinePaths:
         self.raw_source_dir("rentboard").mkdir(parents=True, exist_ok=True)
         self.interim_source_dir("nswgov").mkdir(parents=True, exist_ok=True)
         self.interim_source_dir("rentboard").mkdir(parents=True, exist_ok=True)
+        self.manifests_dir.mkdir(parents=True, exist_ok=True)
+        self.nswgov_sales_dir.mkdir(parents=True, exist_ok=True)
+        self.rentboard_lodgements_dir.mkdir(parents=True, exist_ok=True)
 
 
 def resolve_data_dir(data_dir: str | os.PathLike[str] | None = None) -> Path:
