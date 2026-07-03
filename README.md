@@ -1,134 +1,162 @@
 # propertyiq_getdata
 
-Active ETL code for the trusted NSW property sales and NSW rental bond datasets:
+Collection-only ETL for two NSW property data sources:
 
-- `data/nswgov_df.csv`
-- `data/rentboard_df.csv`
+- NSW Valuer General property sales (`nswgov`)
+- NSW rental bond lodgements (`rentboard`)
 
-The active sources are `nswgov` and `rentboard`. The older listing scrapers and
-`etl4_load/` scripts are historical and should not be run as part of updating
-these two CSVs.
+This repo fetches public source files and writes normalized, period-partitioned
+CSV outputs. Downstream cleaning, joining, and database loading belongs in the
+separate database project.
+
+## Data Contract
+
+Primary outputs:
+
+```text
+data/
+  normalized/
+    nswgov/sales/period=YYYYMMDD.csv
+    rentboard/lodgements/year=YYYY/month=MM.csv
+  manifests/
+    nswgov_sales_manifest.csv
+    rentboard_lodgements_manifest.csv
+```
+
+Manifest columns:
+
+```text
+source,dataset,period_start,period_end,path,rows,sha256,created_at_utc
+```
+
+Legacy compatibility exports are available, but are no longer the primary
+pipeline output:
+
+```text
+data/nswgov_df.csv
+data/rentboard_df.csv
+```
 
 ## Setup
 
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-```
-
-By default the pipeline uses the repo-local `data/` directory. Override it with
-`--data-dir`, `PROPERTYIQ_DATA_DIR`, or `DATA_DIR`.
-
-## Check the trusted outputs
+This project is managed with [uv](https://docs.astral.sh/uv/). One command
+creates the virtualenv (Python pinned by `.python-version`), installs the
+package plus its dependencies, and includes the dev tools:
 
 ```bash
-scripts/data_pull.sh
-python -m propertyiq_getdata audit --data-dir data
-python -m pytest
+uv sync
 ```
 
-## Update NSW Valuer General sales
+By default the pipeline uses repo-local `data/`. Override it with `--data-dir`,
+`PROPERTYIQ_DATA_DIR`, or `DATA_DIR`.
+
+## Run
+
+`uv run` executes inside the project environment. The CLI is available as the
+`propertyiq-getdata` console script (equivalently `python -m propertyiq_getdata`):
 
 ```bash
-python -m propertyiq_getdata nswgov pull --data-dir data
-python -m propertyiq_getdata nswgov extract --data-dir data
-python -m propertyiq_getdata nswgov transform --data-dir data
+uv run propertyiq-getdata nswgov update --data-dir data
+uv run propertyiq-getdata rentboard update --data-dir data
+uv run propertyiq-getdata audit --data-dir data
+uv run pytest
 ```
 
-The legacy entrypoints still work and delegate to the same implementation:
+If you are migrating a checkout that only has the old giant CSVs:
 
 ```bash
-python etl1_pull/nswgov.py
-python etl2_extract/nswgov.py
-python etl3_transform/nswgov.py
+uv run propertyiq-getdata nswgov migrate-legacy --data-dir data
+uv run propertyiq-getdata rentboard migrate-legacy --data-dir data
 ```
 
-## Update NSW rental bond data
+If a downstream job still needs the old files during transition:
 
 ```bash
-python -m propertyiq_getdata rentboard update --data-dir data
+uv run propertyiq-getdata nswgov export-legacy --data-dir data
+uv run propertyiq-getdata rentboard export-legacy --data-dir data
 ```
 
-The legacy entrypoint still works:
+## Source Stages
+
+NSW Gov still has explicit pull/extract/transform stages:
 
 ```bash
-python etl1_pull/rentboard.py
+uv run propertyiq-getdata nswgov pull --data-dir data
+uv run propertyiq-getdata nswgov extract --data-dir data
+uv run propertyiq-getdata nswgov transform --data-dir data
 ```
 
-## Notes
-
-Raw downloaded files are written under `data/raw/{source}/`. Intermediate NSW
-ETL2 files are written under `data/interim/nswgov/output_etl2/`. The final CSV
-contracts stay at the repo-local `data/*.csv` paths.
-
-## Diagnostics
-
-Compare the latest NSWGOV output to the newest backup for one postcode or suburb:
+Rentboard is self-contained:
 
 ```bash
-python scripts/compare_nswgov_latest_backup.py --postcode 2077
-python scripts/compare_nswgov_latest_backup.py --suburb HORNSBY
+uv run propertyiq-getdata rentboard update --data-dir data
 ```
 
-The script prints the monthly average sale-price summary and writes a line chart
-to `data/diagnostics/`, with one line for `backup` and one line for `latest`.
+## Maintenance
 
-## Google Drive Data Storage
+Each source can rebuild its manifest from the partitions already on disk, without
+re-scraping — useful for recovery if a manifest is lost or after hand-editing
+partitions:
 
-Data CSVs are ignored by git and stored in Google Drive. The Drive folder created
-for this project is:
-
-```text
-propertyiq_getdata/
-  data/
-    current/   # latest nswgov_df.csv and rentboard_df.csv
-    previous/  # exactly one previous-run backup
+```bash
+uv run propertyiq-getdata nswgov manifest --data-dir data
+uv run propertyiq-getdata rentboard manifest --data-dir data
 ```
 
-Drive folder URLs:
+## Google Drive Storage
 
-- Root: https://drive.google.com/drive/folders/1pVhbegnVbkHHXx3vJOu13EgJJPPtM4rH
-- Data: https://drive.google.com/drive/folders/1sP06qpp9TcihGfedxTngp9vhXMZeyUyK
-- Current: https://drive.google.com/drive/folders/1ugAN75wxaoVfiOGpfA3AwNam-EcYH5sm
-- Previous: https://drive.google.com/drive/folders/1g-5AVG1Ak9rbwnaYXjV-e_Pmz4BBO-SY
+Data CSVs are ignored by git and stored in Google Drive. The Drive data contract
+now syncs `normalized/`, `manifests/`, and the optional legacy CSVs.
 
-Install and configure `rclone` once:
+Configure `rclone` once:
 
 ```bash
 brew install rclone
 rclone config
-```
-
-Create a Google Drive remote named `gdrive`, or set `RCLONE_REMOTE` to the remote
-name you choose.
-
-Check the setup:
-
-```bash
 scripts/google_drive_check.sh
 ```
 
-Seed Google Drive the first time, using local refreshed files as `current/` and
-the newest local `data/backups/*` folder as `previous/`:
-
-```bash
-scripts/data_seed_google_drive.sh
-```
-
-Pull current data before local work:
+Pull before local work:
 
 ```bash
 scripts/data_pull.sh
 ```
 
-After a successful refresh and test run, push the updated data and rotate the one
-backup:
+Refresh, test, and push:
 
 ```bash
-scripts/data_push_with_one_backup.sh
+scripts/update_data_and_push.sh
 ```
 
-The push script deletes any old files in Drive `previous/`, copies Drive
-`current/` into `previous/`, then replaces Drive `current/` with local
-`data/nswgov_df.csv` and `data/rentboard_df.csv`.
+## Project Layout
+
+The implementation is a single package, organized by responsibility:
+
+```text
+propertyiq_getdata/
+├── cli.py, __main__.py    # command-line entrypoint (python -m propertyiq_getdata)
+├── core/                  # reusable pipeline mechanics, source-agnostic
+│   ├── paths.py           #   data-dir + partition path resolution
+│   ├── manifest.py        #   manifest schema + writer
+│   └── io.py              #   atomic CSV writes
+├── sources/               # one cohesive module per collected source
+│   ├── nswgov.py          #   NSW Valuer General property sales
+│   └── rentboard.py       #   NSW rental bond lodgements
+├── audit.py               # cross-source output summary / integrity check
+└── diagnostics.py         # ad-hoc comparison/analysis helpers
+tests/                     # contract + per-source regression tests
+scripts/                   # rclone Drive sync + update-and-push helpers
+```
+
+Add a new source by dropping a module into `sources/` modelled on `nswgov.py`
+(shared mechanics come from `core/`), then wiring its subcommands into `cli.py`.
+There are no per-stage folders — a source's pull/extract/transform steps are
+functions inside its own module, and are exposed as CLI subcommands.
+
+## Archived Code
+
+Historical, unmaintained code (the old REA / Domain / auhouse scrapers, the
+`etl4_load` master build, the Flask scaffold, and ad-hoc analysis) lives in
+[`archive/`](./archive/README.md). It is kept only as reference for reviving a
+source later and is not part of the active pipeline. See `AGENTS.md` for the full
+guide.

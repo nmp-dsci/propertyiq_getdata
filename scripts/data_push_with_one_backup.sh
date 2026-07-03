@@ -12,7 +12,7 @@ command -v rclone >/dev/null 2>&1 || {
   exit 1
 }
 
-for file in nswgov_df.csv rentboard_df.csv; do
+for file in manifests/nswgov_sales_manifest.csv manifests/rentboard_lodgements_manifest.csv; do
   if [[ ! -f "${LOCAL_DATA_DIR}/${file}" ]]; then
     echo "ERROR: missing ${LOCAL_DATA_DIR}/${file}" >&2
     exit 1
@@ -23,6 +23,8 @@ filter_file="$(mktemp)"
 trap 'rm -f "$filter_file"' EXIT
 
 cat > "$filter_file" <<'FILTER'
++ /manifests/**
++ /normalized/**
 + /nswgov_df.csv
 + /rentboard_df.csv
 - *

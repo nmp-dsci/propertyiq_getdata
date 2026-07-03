@@ -6,7 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from .paths import get_paths
+from .core.paths import get_paths
 
 
 NSWGOV_COMPARE_COLUMNS = ["locality", "postcode", "contract_dt", "sale_price"]

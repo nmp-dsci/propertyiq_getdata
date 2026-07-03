@@ -1,20 +1,14 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
-from .paths import get_paths
+import pandas as pd
 
-
-def file_sha256(path: Path, chunk_size: int = 1024 * 1024) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(chunk_size), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+from .core.manifest import file_sha256
+from .core.paths import get_paths
 
 
 def csv_summary(path: Path, date_column: str | None = None) -> dict[str, Any]:
@@ -43,12 +37,36 @@ def csv_summary(path: Path, date_column: str | None = None) -> dict[str, Any]:
     return summary
 
 
+def manifest_summary(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {"path": str(path), "exists": False}
+    manifest = pd.read_csv(path, dtype=str)
+    summary = {
+        "path": str(path),
+        "exists": True,
+        "partitions": int(manifest.shape[0]),
+        "columns": list(manifest.columns),
+        "sha256": file_sha256(path),
+    }
+    if "period_end" in manifest.columns and not manifest.empty:
+        summary["max_period_end"] = manifest["period_end"].max()
+    if "rows" in manifest.columns and not manifest.empty:
+        summary["rows"] = int(pd.to_numeric(manifest["rows"], errors="coerce").fillna(0).sum())
+    return summary
+
+
 def audit_outputs(data_dir: str | Path | None = None) -> dict[str, Any]:
     paths = get_paths(data_dir)
     return {
         "data_dir": str(paths.data_dir),
-        "nswgov": csv_summary(paths.nswgov_final, date_column="fn_src"),
-        "rentboard": csv_summary(paths.rentboard_final, date_column="lodgement_dt"),
+        "nswgov": {
+            "manifest": manifest_summary(paths.nswgov_manifest),
+            "legacy_csv": csv_summary(paths.nswgov_final, date_column="fn_src"),
+        },
+        "rentboard": {
+            "manifest": manifest_summary(paths.rentboard_manifest),
+            "legacy_csv": csv_summary(paths.rentboard_final, date_column="lodgement_dt"),
+        },
     }
 
 

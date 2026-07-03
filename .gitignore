@@ -1,9 +1,15 @@
 globals.sh
+.DS_Store
 .venv/
-.lavish/
+.lavish/*
+!.lavish/propertyiq_refactor_split_outputs_plan.html
 __pycache__/
 .pytest_cache/
+*.egg-info/
+build/
+dist/
 *.pyc
 *.csv
+*.sqlite
 # Local data is stored outside git, currently in Google Drive.
 /data/

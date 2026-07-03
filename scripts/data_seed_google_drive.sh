@@ -18,13 +18,9 @@ if [[ -z "$latest_backup_dir" ]]; then
   exit 1
 fi
 
-for file in nswgov_df.csv rentboard_df.csv; do
+for file in manifests/nswgov_sales_manifest.csv manifests/rentboard_lodgements_manifest.csv; do
   if [[ ! -f "${LOCAL_DATA_DIR}/${file}" ]]; then
     echo "ERROR: missing ${LOCAL_DATA_DIR}/${file}" >&2
-    exit 1
-  fi
-  if [[ ! -f "${latest_backup_dir}/${file}" ]]; then
-    echo "ERROR: missing ${latest_backup_dir}/${file}" >&2
     exit 1
   fi
 done
@@ -33,6 +29,8 @@ filter_file="$(mktemp)"
 trap 'rm -f "$filter_file"' EXIT
 
 cat > "$filter_file" <<'FILTER'
++ /manifests/**
++ /normalized/**
 + /nswgov_df.csv
 + /rentboard_df.csv
 - *

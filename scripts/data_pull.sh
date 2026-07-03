@@ -15,6 +15,8 @@ filter_file="$(mktemp)"
 trap 'rm -f "$filter_file"' EXIT
 
 cat > "$filter_file" <<'FILTER'
++ /manifests/**
++ /normalized/**
 + /nswgov_df.csv
 + /rentboard_df.csv
 - *
