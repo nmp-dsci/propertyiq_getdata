@@ -4,6 +4,16 @@ import argparse
 
 from .audit import print_audit
 from .sinks.databricks import DEFAULT_VOLUME_ROOT, publish_databricks
+from .sources.abs import (
+    DEFAULT_CENSUS_YEAR,
+    DEFAULT_STATE,
+    GEOGRAPHY,
+    extract_abs,
+    pull_abs,
+    refresh_abs_poa_manifest,
+    transform_abs,
+    update_abs,
+)
 from .sources.nswgov import (
     export_legacy_nswgov,
     extract_nswgov,
@@ -65,6 +75,23 @@ def build_parser() -> argparse.ArgumentParser:
     publish_databricks_parser.add_argument("--profile", default="DEFAULT", help="~/.databrickscfg profile name.")
     publish_databricks_parser.add_argument("--volume-root", default=DEFAULT_VOLUME_ROOT)
     publish_databricks_parser.add_argument("--dry-run", action="store_true", help="Print the plan, upload nothing.")
+    abs_parent = argparse.ArgumentParser(add_help=False)
+    abs_parent.add_argument("--census-year", type=int, default=DEFAULT_CENSUS_YEAR, help=f"Census year. Defaults to {DEFAULT_CENSUS_YEAR}.")
+    abs_parent.add_argument("--state", default=DEFAULT_STATE, help=f"State DataPack to pull. Defaults to {DEFAULT_STATE}.")
+    abs_parent.add_argument("--geography", default=GEOGRAPHY, help=f"ASGS geography level. Defaults to {GEOGRAPHY}.")
+
+    abs_cmd = subparsers.add_parser("abs", parents=[data_parent], help="Run ABS Census GCP DataPack stages.")
+    abs_sub = abs_cmd.add_subparsers(dest="stage", required=True)
+    abs_pull = abs_sub.add_parser("pull", parents=[data_parent, abs_parent])
+    abs_pull.add_argument("--force", action="store_true", help="Re-download and re-extract even if already present.")
+    abs_pull.add_argument("--dry-run", action="store_true")
+    abs_sub.add_parser("extract", parents=[data_parent, abs_parent])
+    abs_sub.add_parser("transform", parents=[data_parent, abs_parent])
+    abs_sub.add_parser("manifest", parents=[data_parent], help="Rebuild the ABS POA partition manifest.")
+    abs_update = abs_sub.add_parser("update", parents=[data_parent, abs_parent])
+    abs_update.add_argument("--force", action="store_true", help="Re-download and re-extract even if already present.")
+    abs_update.add_argument("--dry-run", action="store_true")
+
     return parser
 
 
@@ -127,5 +154,44 @@ def main(argv: list[str] | None = None) -> int:
                 dry_run=args.dry_run,
             )
             print(report.summary())
+    if args.command == "abs":
+        if args.stage == "pull":
+            print(
+                pull_abs(
+                    data_dir=args.data_dir,
+                    census_year=args.census_year,
+                    state=args.state,
+                    geography=args.geography,
+                    dry_run=args.dry_run,
+                    force=args.force,
+                ).to_string(index=False)
+            )
+            return 0
+        if args.stage == "extract":
+            print(
+                extract_abs(
+                    data_dir=args.data_dir, census_year=args.census_year, state=args.state, geography=args.geography
+                ).to_string(index=False)
+            )
+            return 0
+        if args.stage == "transform":
+            print(
+                transform_abs(
+                    data_dir=args.data_dir, census_year=args.census_year, state=args.state, geography=args.geography
+                ).to_string(index=False)
+            )
+            return 0
+        if args.stage == "manifest":
+            print(refresh_abs_poa_manifest(data_dir=args.data_dir).to_string(index=False))
+            return 0
+        if args.stage == "update":
+            update_abs(
+                data_dir=args.data_dir,
+                census_year=args.census_year,
+                state=args.state,
+                geography=args.geography,
+                dry_run=args.dry_run,
+                force=args.force,
+            )
             return 0
     raise RuntimeError(f"Unhandled command: {args}")

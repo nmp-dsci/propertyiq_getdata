@@ -11,6 +11,7 @@ reusable pipeline mechanics (paths, manifests, atomic IO) under
 
 from .audit import audit_outputs, print_audit
 from .sinks.databricks import publish_databricks
+from .sources.abs import update_abs
 from .sources.nswgov import update_nswgov
 from .sources.rentboard import update_rentboard
 
@@ -19,6 +20,7 @@ __all__ = [
     "audit_outputs",
     "print_audit",
     "publish_databricks",
+    "update_abs",
     "update_nswgov",
     "update_rentboard",
 ]

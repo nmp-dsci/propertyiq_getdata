@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en" data-theme="luxury">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>propertyiq_getdata ABS Data Plan</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      securityLevel: "strict",
+      themeVariables: {
+        primaryColor: "#171212",
+        primaryTextColor: "#f6efe5",
+        primaryBorderColor: "#b6a174",
+        lineColor: "#b6a174",
+        secondaryColor: "#2a211c",
+        tertiaryColor: "#3b3026",
+        fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+      }
+    });
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :where(.grid, .flex) > * { min-width: 0; }
+    :where(p, h1, h2, h3, h4, h5, h6, li, td, th, .badge, .label) { overflow-wrap: anywhere; }
+    :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+    .evidence-code { font-size: 0.82rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  </style>
+</head>
+<body class="bg-base-200 text-base-content">
+  <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+    <section class="mb-8">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div class="mb-3 flex flex-wrap gap-2">
+            <span class="badge badge-primary badge-soft">Branch: abs-data</span>
+            <span class="badge badge-info badge-soft">New source, mirrors nswgov/rentboard shape</span>
+            <span class="badge badge-warning badge-soft">Census-only: refreshes every ~5 years</span>
+            <span class="badge badge-success badge-soft">Decided: POA (postcode) only, full GCP table set</span>
+          </div>
+          <h1 class="text-3xl font-bold tracking-normal sm:text-4xl">Add an ABS Census source for every NSW postcode</h1>
+          <p class="mt-3 max-w-4xl text-base-content/75">
+            Produce a normalized, partitioned ABS Census profile (population, income, dwelling structure, tenure, rent
+            and mortgage brackets, and the rest of the GCP profile) for every NSW postcode, on the same pull &rarr;
+            extract &rarr; transform &rarr; manifest contract as <code>nswgov</code> and <code>rentboard</code>, so the
+            downstream database project can join it onto sales and rental bond data by postcode.
+          </p>
+          <p class="mt-2 max-w-4xl text-sm text-success">
+            Decision: build <code>POA</code> (postcode) only &mdash; it's the one geography that joins onto both
+            <code>nswgov</code> and <code>rentboard</code>. <code>SAL</code> (suburb) is out of scope; see below.
+          </p>
+        </div>
+        <div class="stats stats-vertical shadow lg:stats-horizontal">
+          <div class="stat">
+            <div class="stat-title">NSW postcodes (POA)</div>
+            <div class="stat-value text-2xl">~640</div>
+            <div class="stat-desc">the only join key built</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">GCP tables pulled</div>
+            <div class="stat-value text-2xl">Full set</div>
+            <div class="stat-desc">not curated &mdash; keep everything</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Latest Census</div>
+            <div class="stat-value text-2xl">2021</div>
+            <div class="stat-desc">next release ~2027-28</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 grid gap-4 lg:grid-cols-3">
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">Goal</h2>
+          <p class="text-base-content/75">
+            One normalized row per NSW postcode (and, secondarily, per NSW suburb) carrying the same kind of stats shown
+            on an ABS QuickStats page &mdash; population, age, income, dwelling type, tenure, rent/mortgage brackets.
+          </p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">Constraint</h2>
+          <p class="text-base-content/75">
+            <code>rentboard</code> only has a <code>postcode</code> column, no suburb name. So postcode (ABS geography
+            code <code>POA</code>) has to be the join key that actually works across both existing sources.
+          </p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">Recommendation</h2>
+          <p class="text-base-content/75">
+            No suburb&rarr;LGA mapping step is needed. ABS already publishes Census data natively by postcode
+            (<code>POA</code>) <em>and</em> by suburb/locality (<code>SAL</code>) &mdash; both are first-class ASGS
+            geographies, not derived from LGA. <strong>Decided: build <code>POA</code> only for v1</strong> since it's
+            the key that actually joins both existing sources.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 card card-border bg-base-100">
+      <div class="card-body">
+        <h2 class="card-title">Why you don't need a suburb&rarr;LGA mapping</h2>
+        <p class="text-base-content/75 mb-3">
+          The QuickStats URL in the request (<code>/quickstats/2021/LGA14000</code>) happens to use an LGA (council
+          area) code, but ABS publishes the identical style of Census profile at several independent geography levels
+          &mdash; including <code>POA</code> (postal areas, i.e. postcodes) and <code>SAL</code> (suburbs and
+          localities) &mdash; via <a class="link link-primary" href="https://www.abs.gov.au/census/find-census-data/datapacks" target="_blank" rel="noopener">Census DataPacks</a>.
+          LGA is just one geography among many; it is not an intermediate step you have to route postcodes/suburbs
+          through.
+        </p>
+        <div class="overflow-x-auto rounded-box bg-base-200 p-4">
+          <pre class="mermaid">
+flowchart LR
+  subgraph abs["ABS Census geographies (all independent, all from the same DataPack)"]
+    POA["POA — Postal Areas<br/>(postcode)<br/>BUILT IN V1"]
+    SAL["SAL — Suburbs and Localities<br/>(suburb name)<br/>deferred, not built"]
+    LGA["LGA — Local Government Area<br/>(council)"]
+    SA2["SA1 / SA2 / SA3 / SA4<br/>(statistical areas)"]
+  end
+  DP["2021 Census GCP DataPack<br/>(NSW, per geography)"] --> POA
+  DP -.-> SAL
+  DP --> LGA
+  DP --> SA2
+  POA -->|join key| NSWGOV["nswgov sales<br/>(postcode, locality)"]
+  POA -->|join key| RENTBOARD["rentboard lodgements<br/>(postcode only)"]
+          </pre>
+        </div>
+        <div class="alert alert-info mt-3">
+          <span>
+            If a future need arises for council-level rollups, ABS separately publishes
+            <a class="link" href="https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs/edition-3-july-2021-june-2026/access-and-downloads/correspondences" target="_blank" rel="noopener">ASGS geographic correspondence files</a>
+            (POA&harr;LGA, SAL&harr;LGA, etc.) as ready-made CSV concordances &mdash; out of scope for this plan since
+            nothing in the current data contract needs LGA.
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 card card-border bg-base-100">
+      <div class="card-body">
+        <h2 class="card-title">Join-key strategy: POA vs SAL vs LGA</h2>
+        <div class="grid gap-4 lg:grid-cols-3">
+          <div class="rounded-box border border-success/40 bg-success/10 p-4">
+            <div class="mb-2 flex items-center gap-2"><span class="badge badge-success">Decided, v1</span><h3 class="font-semibold">POA (postcode)</h3></div>
+            <p class="text-sm text-base-content/75">
+              The only geography both <code>nswgov</code> (<code>postcode</code>) and <code>rentboard</code>
+              (<code>postcode</code>) can reliably join on. This is the whole v1 build.
+            </p>
+          </div>
+          <div class="rounded-box border border-base-content/15 bg-base-200 p-4 opacity-80">
+            <div class="mb-2 flex items-center gap-2"><span class="badge badge-ghost">Decided: out of scope</span><h3 class="font-semibold">SAL (suburb)</h3></div>
+            <p class="text-sm text-base-content/75">
+              Would only ever cover <code>nswgov.locality</code>, never <code>rentboard</code> (no suburb field).
+              Since postcode already joins both sources, SAL adds a second pipeline surface for no join-coverage
+              gain &mdash; not built.
+            </p>
+          </div>
+          <div class="rounded-box border border-error/40 bg-error/10 p-4">
+            <div class="mb-2 flex items-center gap-2"><span class="badge badge-error">Not needed</span><h3 class="font-semibold">LGA (council)</h3></div>
+            <p class="text-sm text-base-content/75">
+              Neither existing source has a council field, and ABS doesn't require routing through LGA to get
+              postcode/suburb data. Skip unless a future consumer asks for it.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 card card-border bg-base-100">
+      <div class="card-body">
+        <h2 class="card-title">Data source: Census DataPacks (bulk CSV), not the QuickStats web pages</h2>
+        <p class="text-base-content/75 mb-3">
+          The QuickStats URL in the request renders one HTML page per geography &mdash; scraping ~640 postcode pages
+          (or ~2,500 suburb pages) one at a time would be slow and fragile. ABS instead publishes the same underlying
+          numbers as bulk ZIP/CSV downloads, pre-filterable to NSW, at
+          <a class="link link-primary" href="https://www.abs.gov.au/census/find-census-data/datapacks" target="_blank" rel="noopener">Census &gt; Find Census data &gt; DataPacks</a>:
+          the <strong>General Community Profile (GCP)</strong>, at <code>POA</code> geography, for NSW &mdash; the
+          full table set, not a curated subset (see below).
+        </p>
+        <div class="overflow-x-auto rounded-box bg-base-200 p-4">
+          <pre class="mermaid">
+flowchart TB
+  A["ABS DataPacks page<br/>2021 Census GCP, NSW, POA"] --> B["ZIP: per-table CSVs, full set<br/>2021Census_G01_NSW_POA.csv ... G60+<br/>+ Metadata xlsx (code&rarr;label) + geography lookup xlsx"]
+  B --> C["pull_abs<br/>download + unzip into data/raw/abs/ (gitignored, synced to Drive)"]
+  C --> D["extract_abs<br/>every table: keep all columns,<br/>melt to long form, decode short codes"]
+  D --> E["transform_abs<br/>pivot wide (1 row per POA code),<br/>attach postcode label"]
+  E --> F["data/normalized/abs/poa/census_year=2021.csv<br/>+ manifest"]
+  F --> G["database project:<br/>join onto nswgov/rentboard by postcode"]
+          </pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 grid gap-4 lg:grid-cols-2">
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">Output Layout</h2>
+          <p class="text-base-content/75">Follows the existing <code>raw/ &rarr; interim/ &rarr; normalized/ + manifests/</code> contract, partitioned by Census year instead of date:</p>
+          <div class="mockup-code mt-3 text-sm">
+            <pre data-prefix=" "><code>data/                      # gitignored, synced to Drive (existing convention)
+  raw/
+    abs/
+      datapacks/2021_GCP_NSW_POA.zip   # kept long-term, static per census year
+      datapacks/2021_GCP_metadata.xlsx
+  interim/
+    abs/2021/poa_long.csv     # one row per (postcode, table, short_code, value)
+  normalized/
+    abs/poa/census_year=2021.csv   # one row per postcode, full GCP table set
+  manifests/
+    abs_poa_manifest.csv</code></pre>
+          </div>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title">Normalized Row Shape (POA)</h2>
+          <p class="text-base-content/75 mb-3">
+            One row per postcode, but <strong>wide</strong> &mdash; keeping the full GCP table set means every table
+            contributes columns, so a row has hundreds of fields, not a dozen. Unlike <code>nswgov</code>/<code>rentboard</code>'s
+            hardcoded <code>FINAL_COLUMNS</code>, the column list here is <strong>derived at extract time from the
+            metadata workbook</strong> (short code &rarr; label), because it's too large to hand-maintain and can
+            shift slightly between Census releases.
+          </p>
+          <div class="overflow-x-auto rounded-box border border-base-content/10">
+            <table class="table table-zebra table-sm">
+              <thead>
+                <tr><th>Column (representative, not exhaustive)</th><th>Source table</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>postcode</code></td><td>POA code, zero-padded to match <code>nswgov</code>/<code>rentboard</code></td></tr>
+                <tr><td><code>census_year</code></td><td>e.g. <code>2021</code></td></tr>
+                <tr><td><code>total_population</code>, <code>median_age</code></td><td>G01 / G02</td></tr>
+                <tr><td><code>median_household_income_weekly</code></td><td>G02</td></tr>
+                <tr><td><code>median_mortgage_repay_monthly</code></td><td>G02 / G36</td></tr>
+                <tr><td><code>median_rent_weekly</code></td><td>G02 / G37</td></tr>
+                <tr><td><code>dwelling_structure_*</code></td><td>G33 (separate house, townhouse, flat/unit...)</td></tr>
+                <tr><td><code>tenure_type_*</code></td><td>G35 (owned, mortgaged, rented, landlord type)</td></tr>
+                <tr><td><code>income_bracket_*</code></td><td>G17 (weekly personal income bands)</td></tr>
+                <tr><td><code>education_*</code>, <code>employment_*</code>, <code>ancestry_*</code>, <code>language_*</code>, <code>religion_*</code>, <code>unpaid_assistance_*</code>, ...</td><td>the rest of the GCP profile &mdash; kept, not skipped</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8 card card-border bg-base-100">
+      <div class="card-body">
+        <div class="mb-2 flex flex-wrap items-center gap-2">
+          <h2 class="card-title mb-0">Census Tables Pulled (full GCP set)</h2>
+          <span class="badge badge-success badge-soft">Decided: keep as much information as possible</span>
+        </div>
+        <p class="text-base-content/75 mb-3">
+          The GCP DataPack ships ~60 tables (<code>G01</code>&ndash;<code>G60</code>+). Rather than curating down to a
+          property-specific subset, v1 pulls <strong>every table</strong> the POA-level GCP DataPack provides and
+          keeps it in the normalized output &mdash; the database project downstream can select/prune what it needs,
+          but the collection layer shouldn't throw information away.
+        </p>
+        <div class="overflow-x-auto rounded-box border border-base-content/10">
+          <table class="table table-sm table-zebra">
+            <thead><tr><th>Table</th><th>Content</th><th>Why it's useful next to sale/rent data</th><th>Included?</th></tr></thead>
+            <tbody>
+              <tr><td><code>G01</code></td><td>Selected person characteristics</td><td>Total population, median age, indigenous %, English-only-spoken %</td><td><span class="badge badge-success badge-sm">Yes</span></td></tr>
+              <tr><td><code>G02</code></td><td>Selected medians &amp; averages</td><td>Median household income, mortgage repayment, rent, household size &mdash; single-row summary of the rest</td><td><span class="badge badge-success badge-sm">Yes</span></td></tr>
+              <tr><td><code>G33</code></td><td>Dwelling structure</td><td>Separate house vs townhouse vs flat/unit mix &mdash; explains sale-price distribution</td><td><span class="badge badge-success badge-sm">Yes</span></td></tr>
+              <tr><td><code>G35</code></td><td>Tenure type &amp; landlord type</td><td>Owned outright / mortgaged / rented split &mdash; directly relevant to rentboard join</td><td><span class="badge badge-success badge-sm">Yes</span></td></tr>
+              <tr><td><code>G36</code> / <code>G37</code></td><td>Mortgage repayment / rent brackets</td><td>Distribution around the median, sanity-checks sale prices and rentboard's <code>weekly_rent</code></td><td><span class="badge badge-success badge-sm">Yes</span></td></tr>
+              <tr><td><code>G17</code></td><td>Personal income by age/sex</td><td>Affordability context for the postcode</td><td><span class="badge badge-success badge-sm">Yes</span></td></tr>
+              <tr><td>everything else</td><td>Education, employment, ancestry, language, religion, need-for-assistance, unpaid work, family composition, internet access...</td><td>Not obviously tied to sale/rent analytics today, but cheap to keep and may matter later</td><td><span class="badge badge-success badge-sm">Yes &mdash; kept</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="alert alert-info mt-3">
+          <span>
+            Consequence: the extractor can't hardcode a column allowlist per table. <code>extract_abs</code> should
+            iterate every <code>2021Census_G##_NSW_POA.csv</code> file present in the DataPack rather than a
+            hand-maintained table-code list, so a future Census release with renumbered/added tables is handled by
+            re-running the pipeline, not editing code.
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-8">
+      <h2 class="mb-4 text-2xl font-bold">Implementation Plan</h2>
+      <ul class="steps steps-vertical w-full lg:steps-horizontal">
+        <li class="step step-primary">paths + core</li>
+        <li class="step step-primary">pull_abs</li>
+        <li class="step step-primary">extract_abs</li>
+        <li class="step step-primary">transform_abs</li>
+        <li class="step step-primary">CLI + tests</li>
+      </ul>
+      <div class="mt-4 grid gap-4 lg:grid-cols-5">
+        <div class="card card-border bg-base-100"><div class="card-body"><h3 class="font-semibold">1. Paths + core</h3><p class="text-sm text-base-content/75">Add <code>abs_poa_dir</code>, <code>abs_sal_dir</code>, <code>abs_poa_manifest</code>, <code>abs_sal_manifest</code> to <code>core/paths.py</code>. No new core mechanics needed &mdash; reuse <code>atomic_write_csv</code> and <code>write_manifest</code>.</p></div></div>
+        <div class="card card-border bg-base-100"><div class="card-body"><h3 class="font-semibold">2. pull_abs</h3><p class="text-sm text-base-content/75">Download the GCP DataPack ZIP for NSW at <code>POA</code>, plus the metadata/geography-label workbook, into <code>data/raw/abs/</code> (gitignored, synced to Drive like the other sources' raw dirs); unzip. Idempotent: skip if the census year's raw files already exist. Keep the ZIP &mdash; it's static per census year, cheap to retain.</p></div></div>
+        <div class="card card-border bg-base-100"><div class="card-body"><h3 class="font-semibold">3. extract_abs</h3><p class="text-sm text-base-content/75">Iterate every table CSV present in the DataPack (not a hand-picked list), keep all short-code columns, melt to long form, decode short codes to labels via the metadata workbook.</p></div></div>
+        <div class="card card-border bg-base-100"><div class="card-body"><h3 class="font-semibold">4. transform_abs</h3><p class="text-sm text-base-content/75">Pivot wide to one row per postcode, attach the postcode label from the geography lookup, zero-pad <code>postcode</code> to match nswgov/rentboard, write partitioned output + refresh manifest.</p></div></div>
+        <div class="card card-border bg-base-100"><div class="card-body"><h3 class="font-semibold">5. CLI + tests</h3><p class="text-sm text-base-content/75">Add an <code>abs</code> subcommand (<code>pull</code>/<code>extract</code>/<code>transform</code>/<code>update</code>/<code>manifest</code>) mirroring <code>nswgov</code>'s shape. Contract tests pin the curated column list and partition naming, using a small synthetic DataPack fixture rather than the real multi-MB download.</p></div></div>
+      </div>
+    </section>
+
+    <section class="mb-8 grid gap-4 lg:grid-cols-2">
+      <div class="alert alert-warning">
+        <span>
+          <strong>POA &ne; postcode boundary.</strong> ABS's Postal Area geography is a best-fit approximation built
+          from mesh blocks, not the exact Australia Post boundary. A handful of postcodes (PO-box-only, very sparse)
+          will have <em>no</em> Census data &mdash; treat as expected nulls, don't apply nswgov's "raise on zero rows"
+          pattern here.
+        </span>
+      </div>
+      <div class="alert alert-warning">
+        <span>
+          <strong>Cell perturbation.</strong> ABS applies small random noise to Census cell counts for privacy,
+          especially in small geographies. Counts are indicative, not exact &mdash; worth a one-line note in the
+          output's README so downstream consumers don't over-trust small-postcode figures.
+        </span>
+      </div>
+      <div class="alert alert-info">
+        <span>
+          <strong>Update cadence is fundamentally different.</strong> Census data changes every ~5 years (2021 &rarr;
+          next release ~2027-28), not weekly. <code>abs update</code> is a rare, manual-trigger job, not something to
+          wire into the same cron/schedule as <code>nswgov</code>/<code>rentboard</code>.
+        </span>
+      </div>
+      <div class="alert alert-info">
+        <span>
+          <strong>Wide output by design.</strong> Keeping the full GCP table set means a normalized row has hundreds
+          of columns. That's an accepted tradeoff for maximizing retained information &mdash; downstream consumers
+          select/prune what they need rather than the collector deciding for them.
+        </span>
+      </div>
+    </section>
+
+    <section class="mb-8 card card-border bg-base-100">
+      <div class="card-body">
+        <h2 class="card-title">Open Questions</h2>
+        <div class="overflow-x-auto rounded-box border border-base-content/10">
+          <table class="table table-sm table-zebra">
+            <thead><tr><th>Question</th><th>Why it matters</th></tr></thead>
+            <tbody>
+              <tr><td>GCP only, or also Indigenous/Time Series Profiles (IP/TSP)?</td><td>Same DataPacks page offers IP and TSP profiles at POA level too. Given the "keep as much information as possible" decision above, worth explicitly deciding whether these are in or out rather than defaulting to GCP-only.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-3 text-sm text-base-content/60">
+          <strong>Resolved:</strong> POA-only for v1 (SAL out of scope) &middot; pull the full GCP table set, not a
+          curated subset &middot; raw DataPack ZIPs live in <code>data/raw/abs/</code>, gitignored, same as other
+          sources.
+        </div>
+      </div>
+    </section>
+
+    <section class="card card-border bg-base-100">
+      <div class="card-body">
+        <h2 class="card-title">Verified Evidence</h2>
+        <div class="grid gap-4 lg:grid-cols-2">
+          <div class="mockup-code">
+            <pre data-prefix="$"><code>grep FINAL_COLUMNS -A30 propertyiq_getdata/sources/rentboard.py</code></pre>
+            <pre data-prefix=">"><code>FINAL_COLUMNS = ["lodgement_dt", "postcode",
+"property_type", "bedrooms", "weekly_rent"]
+# no suburb/locality field</code></pre>
+          </div>
+          <div class="mockup-code">
+            <pre data-prefix="$"><code>grep locality -A1 propertyiq_getdata/sources/nswgov.py</code></pre>
+            <pre data-prefix=">"><code>"locality", "postcode",
+# nswgov has both; rentboard has postcode only</code></pre>
+          </div>
+          <div class="mockup-code">
+            <pre data-prefix="$"><code>web: abs.gov.au/census/find-census-data/datapacks</code></pre>
+            <pre data-prefix=">"><code>Geographies include POA, SAL, LGA, SA1-4,
+GCCSA — CSV in ZIP, per state or national</code></pre>
+          </div>
+          <div class="mockup-code">
+            <pre data-prefix="$"><code>web: abs.gov.au/.../asgs.../correspondences</code></pre>
+            <pre data-prefix=">"><code>Official POA↔LGA / SAL↔LGA concordance CSVs
+exist if ever needed — not required for this plan</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,9 +1,10 @@
 # propertyiq_getdata
 
-Collection-only ETL for two NSW property data sources:
+Collection-only ETL for NSW property data sources:
 
 - NSW Valuer General property sales (`nswgov`)
 - NSW rental bond lodgements (`rentboard`)
+- ABS Census General Community Profile, by postcode (`abs`)
 
 This repo fetches public source files and writes normalized, period-partitioned
 CSV outputs. Downstream cleaning, joining, and database loading belongs in the
@@ -18,9 +19,12 @@ data/
   normalized/
     nswgov/sales/period=YYYYMMDD.csv
     rentboard/lodgements/year=YYYY/month=MM.csv
+    abs/poa/census_year=YYYY.csv           # one row per postcode, full GCP table set
+    abs/poa/census_year=YYYY_columns.csv   # column -> table/short-code/long-label dictionary
   manifests/
     nswgov_sales_manifest.csv
     rentboard_lodgements_manifest.csv
+    abs_poa_manifest.csv
 ```
 
 Manifest columns:
@@ -148,6 +152,17 @@ Rentboard is self-contained:
 uv run propertyiq-getdata rentboard update --data-dir data
 ```
 
+ABS is a rare, manual-trigger job (Census data refreshes every ~5 years, not
+weekly) but has the same explicit stages:
+
+```bash
+uv run propertyiq-getdata abs pull --data-dir data --census-year 2021 --state NSW
+uv run propertyiq-getdata abs extract --data-dir data --census-year 2021 --state NSW
+uv run propertyiq-getdata abs transform --data-dir data --census-year 2021 --state NSW
+# or, all three:
+uv run propertyiq-getdata abs update --data-dir data --census-year 2021 --state NSW
+```
+
 ### How NSW Gov archives are found
 
 The Valuer General retired the portal page this scraper used to parse, and the
@@ -185,6 +200,7 @@ partitions:
 ```bash
 uv run propertyiq-getdata nswgov manifest --data-dir data
 uv run propertyiq-getdata rentboard manifest --data-dir data
+uv run propertyiq-getdata abs manifest --data-dir data
 ```
 
 ## Google Drive Storage
@@ -225,7 +241,8 @@ propertyiq_getdata/
 │   └── io.py              #   atomic CSV writes
 ├── sources/               # one cohesive module per collected source
 │   ├── nswgov.py          #   NSW Valuer General property sales
-│   └── rentboard.py       #   NSW rental bond lodgements
+│   ├── rentboard.py       #   NSW rental bond lodgements
+│   └── abs.py             #   ABS Census GCP DataPack, by postcode (POA)
 ├── sinks/                 # one module per publish target (counterpart of sources/)
 │   └── databricks.py      #   updates-only Parquet -> Unity Catalog volume
 ├── audit.py               # cross-source output summary / integrity check

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-import zipfile
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlparse
@@ -11,7 +10,7 @@ import numpy as np
 import pandas as pd
 from bs4 import BeautifulSoup
 
-from ..core.io import atomic_write_csv
+from ..core.io import atomic_write_csv, safe_extract_zip
 from ..core.manifest import write_manifest
 from ..core.paths import get_paths
 
@@ -366,16 +365,6 @@ def filter_new_links(links: pd.DataFrame, latest_period: str | None) -> pd.DataF
     return links[keep].copy()
 
 
-def _safe_extract(zip_path: Path, extract_dir: Path) -> None:
-    extract_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(zip_path) as zip_ref:
-        for member in zip_ref.infolist():
-            target = (extract_dir / member.filename).resolve()
-            if not str(target).startswith(str(extract_dir.resolve())):
-                raise ValueError(f"Refusing to extract unsafe zip member: {member.filename}")
-        zip_ref.extractall(extract_dir)
-
-
 def expand_nested_zips(root_dir: Path) -> pd.DataFrame:
     statuses = []
     for zip_path in sorted(root_dir.rglob("*.zip")):
@@ -383,7 +372,7 @@ def expand_nested_zips(root_dir: Path) -> pd.DataFrame:
         if extract_dir.exists() and any(extract_dir.rglob("*.DAT")):
             statuses.append({"zip_path": str(zip_path), "extract_dir": str(extract_dir), "status": "exists"})
             continue
-        _safe_extract(zip_path, extract_dir)
+        safe_extract_zip(zip_path, extract_dir)
         statuses.append({"zip_path": str(zip_path), "extract_dir": str(extract_dir), "status": "extracted"})
     return pd.DataFrame(statuses)
 
@@ -426,7 +415,7 @@ def pull_nswgov(
             response = session.get(record["href"], timeout=120)
             response.raise_for_status()
             zip_path.write_bytes(response.content)
-            _safe_extract(zip_path, payload_dir)
+            safe_extract_zip(zip_path, payload_dir)
             zip_path.unlink()
             status = "downloaded"
         statuses.append({**record, "path": str(payload_dir), "status": status})
