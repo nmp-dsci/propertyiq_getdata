@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en" data-theme="business">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>propertyiq_getdata Pipeline Update Plan</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      securityLevel: "strict",
+      themeVariables: {
+        primaryColor: "#d9e7ff",
+        primaryTextColor: "#101828",
+        primaryBorderColor: "#6287c7",
+        lineColor: "#64748b",
+        secondaryColor: "#f0f9ff",
+        tertiaryColor: "#fff7ed"
+      }
+    });
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :where(.grid, .flex, .layout-grid, .layout-flex) > *,
+    :where([style*="display: grid"], [style*="display:grid"], [style*="display: flex"], [style*="display:flex"]) > * {
+      min-width: 0;
+    }
+    :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) {
+      overflow-wrap: anywhere;
+    }
+    :where(img, svg, video, canvas, iframe) {
+      max-width: 100%;
+      height: auto;
+    }
+    html { scroll-behavior: smooth; }
+    body { letter-spacing: 0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .section-anchor { scroll-margin-top: 7rem; }
+    .decision-card { border-left: 4px solid color-mix(in oklab, var(--color-primary) 72%, white); }
+    .evidence td:first-child { font-weight: 650; white-space: nowrap; }
+    .mermaid-wrap { background: var(--color-base-100); border: 1px solid color-mix(in oklab, var(--color-base-content) 14%, transparent); }
+  </style>
+</head>
+<body class="bg-base-200 text-base-content">
+  <div class="navbar sticky top-0 z-10 bg-base-100/95 backdrop-blur border-b border-base-content/10">
+    <div class="navbar-start min-w-0">
+      <div class="px-3 min-w-0">
+        <p class="text-xs uppercase tracking-wide opacity-70">propertyiq_getdata</p>
+        <h1 class="text-lg sm:text-xl font-semibold truncate">Pipeline Update Plan</h1>
+      </div>
+    </div>
+    <div class="navbar-end hidden lg:flex">
+      <ul class="menu menu-horizontal text-sm">
+        <li><a href="#decision">Recommendation</a></li>
+        <li><a href="#flow">Target Flow</a></li>
+        <li><a href="#runbook">Runbook</a></li>
+        <li><a href="#tests">Tests</a></li>
+        <li><a href="#risks">Risks</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <section class="section-anchor mb-6">
+      <div class="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
+        <div class="bg-base-100 border border-base-content/10 rounded-lg p-6">
+          <div class="flex flex-wrap gap-2 mb-4">
+            <span class="badge badge-primary badge-soft">Plan before code</span>
+            <span class="badge badge-warning badge-soft">Do not run legacy etl4 as-is</span>
+            <span class="badge badge-info badge-soft">Trusted final CSVs in repo data/</span>
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-bold leading-tight">Append missing NSW sales and rental bond data, while making the pipeline testable and path-safe.</h2>
+          <p class="mt-4 text-base opacity-85">
+            The safe path is to preserve the trusted snapshots in <span class="mono">data/nswgov_df.csv</span> and <span class="mono">data/rentboard_df.csv</span>, modernize only the active pipelines, add tests that prove new output is compatible with those snapshots, then append the 2024-2026 gap.
+          </p>
+        </div>
+        <div class="stats stats-vertical shadow bg-base-100 border border-base-content/10 rounded-lg">
+          <div class="stat">
+            <div class="stat-title">NSW sales trusted snapshot</div>
+            <div class="stat-value text-2xl">2,697,673 rows</div>
+            <div class="stat-desc">Latest observed <span class="mono">fn_src=20240930.csv</span></div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Rentboard trusted snapshot</div>
+            <div class="stat-value text-2xl">2,744,767 rows</div>
+            <div class="stat-desc">Latest observed lodgement month <span class="mono">2024-08</span></div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Live source coverage checked</div>
+            <div class="stat-value text-2xl">2026</div>
+            <div class="stat-desc">NSW weekly through <span class="mono">20260629</span>; rentboard through May 2026</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="decision" class="section-anchor mb-6">
+      <div class="alert alert-warning mb-4">
+        <span><strong>Recommended decision:</strong> restructure the active pipelines into importable modules with CLIs, but keep the final CSV contract unchanged until the append is verified.</span>
+      </div>
+      <div class="grid gap-4 lg:grid-cols-3">
+        <div class="card bg-base-100 border border-base-content/10 rounded-lg decision-card">
+          <div class="card-body">
+            <h3 class="card-title">Option A: Minimal patch</h3>
+            <p>Change relative paths to <span class="mono">data/</span>, replace pandas-deprecated calls, run existing scripts.</p>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <span class="badge badge-success badge-soft">Fast</span>
+              <span class="badge badge-warning badge-soft">Fragile</span>
+            </div>
+            <p class="text-sm opacity-75 mt-2">Good only if the goal is a one-off update and we accept weak future maintainability.</p>
+          </div>
+        </div>
+        <div class="card bg-base-100 border border-primary rounded-lg decision-card">
+          <div class="card-body">
+            <h3 class="card-title">Option B: Targeted modernization</h3>
+            <p>Extract active logic into reusable functions, add explicit paths, tests, dry-run mode, and append guards.</p>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <span class="badge badge-primary">Recommended</span>
+              <span class="badge badge-success badge-soft">Safe append</span>
+            </div>
+            <p class="text-sm opacity-75 mt-2">Best fit for trusted data plus a multi-year catch-up with likely source drift.</p>
+          </div>
+        </div>
+        <div class="card bg-base-100 border border-base-content/10 rounded-lg decision-card">
+          <div class="card-body">
+            <h3 class="card-title">Option C: Full rewrite</h3>
+            <p>Replace scripts with a packaged ETL app, metadata store, logging, and richer validation framework.</p>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <span class="badge badge-info badge-soft">Cleanest long term</span>
+              <span class="badge badge-error badge-soft">Highest delay</span>
+            </div>
+            <p class="text-sm opacity-75 mt-2">Useful later, but it adds risk before the append is complete.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-anchor mb-6">
+      <div class="bg-base-100 border border-base-content/10 rounded-lg p-5">
+        <h2 class="text-xl font-semibold mb-3">Evidence From Repo And Live Sources</h2>
+        <div class="overflow-x-auto rounded-lg border border-base-content/10">
+          <table class="table table-zebra evidence">
+            <thead>
+              <tr>
+                <th>Area</th>
+                <th>Observed state</th>
+                <th>Planning implication</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Trusted outputs</td>
+                <td><span class="mono">data/nswgov_df.csv</span> and <span class="mono">data/rentboard_df.csv</span> exist inside the repo.</td>
+                <td>Final outputs should target repo <span class="mono">data/</span>, with backups before append.</td>
+              </tr>
+              <tr>
+                <td>Old script paths</td>
+                <td>Active scripts currently use <span class="mono">../../data/propertyiq_getdata/{sourceid}</span>.</td>
+                <td>Introduce a single path resolver instead of relying on current working directory.</td>
+              </tr>
+              <tr>
+                <td>NSW live source</td>
+                <td>Current page exposes <span class="mono">yearly/2025.zip</span> and weekly data through <span class="mono">20260629.zip</span>.</td>
+                <td>Classify links by URL path and filename, not exact CSS class names.</td>
+              </tr>
+              <tr>
+                <td>Rentboard live source</td>
+                <td>Current page exposes monthly XLSX files through May 2026 with varied filenames.</td>
+                <td>Classify by anchor text and href, then test against saved HTML fixtures.</td>
+              </tr>
+              <tr>
+                <td>Pandas compatibility</td>
+                <td><span class="mono">DataFrame.append</span> is used in <span class="mono">rentboard.py</span>; current environment has no pandas installed.</td>
+                <td>Pin dependencies, replace deprecated APIs, and run tests in a venv before touching data.</td>
+              </tr>
+              <tr>
+                <td>etl4</td>
+                <td><span class="mono">etl4_load/</span> scripts are legacy, Python 2-era, and hardcode <span class="mono">/Users/macmac/...</span>.</td>
+                <td>Do not include etl4 in this update path unless reviving the old propertyIQ master is a separate goal.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="flow" class="section-anchor mb-6">
+      <div class="grid gap-4 lg:grid-cols-[1fr_1.1fr]">
+        <div class="bg-base-100 border border-base-content/10 rounded-lg p-5">
+          <h2 class="text-xl font-semibold mb-3">Target Flow</h2>
+          <p class="opacity-80 mb-4">
+            Keep the externally useful CSV names stable while moving raw and intermediate artifacts under explicit source folders.
+          </p>
+          <div class="mermaid-wrap rounded-lg p-3 overflow-x-auto">
+            <pre class="mermaid">
+flowchart TD
+  A["Live NSW Valuer General zips"] --> B["etl1 pull nswgov<br/>data/raw/nswgov/{yearly,weekly}"]
+  B --> C["etl2 extract DAT<br/>data/interim/nswgov/output_etl2"]
+  C --> D["etl3 transform sales<br/>data/nswgov_df.csv"]
+  E["Live NSW rental bond XLSX"] --> F["rentboard pull + normalize<br/>data/raw/rentboard"]
+  F --> G["rentboard final stack<br/>data/rentboard_df.csv"]
+  H["Trusted existing CSVs"] --> I["contract + append tests"]
+  D --> I
+  G --> I
+  I --> J["Verified append release"]
+            </pre>
+          </div>
+        </div>
+        <div class="bg-base-100 border border-base-content/10 rounded-lg p-5">
+          <h2 class="text-xl font-semibold mb-3">Proposed Files To Add Or Change</h2>
+          <div class="mockup-code text-sm">
+            <pre data-prefix="+"><code>propertyiq_getdata/paths.py</code></pre>
+            <pre data-prefix="+"><code>propertyiq_getdata/sources/nswgov.py</code></pre>
+            <pre data-prefix="+"><code>propertyiq_getdata/sources/rentboard.py</code></pre>
+            <pre data-prefix="+"><code>propertyiq_getdata/cli.py</code></pre>
+            <pre data-prefix="+"><code>tests/test_nswgov_*.py</code></pre>
+            <pre data-prefix="+"><code>tests/test_rentboard_*.py</code></pre>
+            <pre data-prefix="+"><code>tests/test_contract_outputs.py</code></pre>
+            <pre data-prefix="~"><code>etl1_pull/nswgov.py, etl2_extract/nswgov.py, etl3_transform/nswgov.py</code></pre>
+            <pre data-prefix="~"><code>etl1_pull/rentboard.py</code></pre>
+          </div>
+          <p class="text-sm opacity-75 mt-4">
+            The old ETL scripts can become thin compatibility wrappers around the new functions, so existing run habits still work while tests exercise importable code.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="runbook" class="section-anchor mb-6">
+      <div class="bg-base-100 border border-base-content/10 rounded-lg p-5">
+        <h2 class="text-xl font-semibold mb-3">Execution Plan</h2>
+        <ul class="steps steps-vertical lg:steps-horizontal w-full mb-6">
+          <li class="step step-primary">Protect</li>
+          <li class="step step-primary">Refactor</li>
+          <li class="step step-primary">Test</li>
+          <li class="step">Dry run</li>
+          <li class="step">Append</li>
+          <li class="step">Audit</li>
+        </ul>
+        <div class="overflow-x-auto rounded-lg border border-base-content/10">
+          <table class="table table-zebra">
+            <thead>
+              <tr>
+                <th>Phase</th>
+                <th>Action</th>
+                <th>Exit check</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1. Baseline and backup</td>
+                <td>Record hashes, row counts, schemas, max dates, and copy the two trusted CSVs to timestamped backups.</td>
+                <td>Backup files exist; contract report confirms current row counts and columns.</td>
+              </tr>
+              <tr>
+                <td>2. Environment</td>
+                <td>Create venv, pin current dependencies, add <span class="mono">pytest</span>, and confirm pandas/openpyxl versions.</td>
+                <td><span class="mono">python -m pytest</span> can run before pipeline changes.</td>
+              </tr>
+              <tr>
+                <td>3. Path cleanup</td>
+                <td>Centralize <span class="mono">DATA_DIR</span> as repo <span class="mono">data/</span> by default, overridable by env var or CLI.</td>
+                <td>Scripts no longer depend on being run from inside ETL folders.</td>
+              </tr>
+              <tr>
+                <td>4. NSW pipeline</td>
+                <td>Make link discovery resilient, parse DAT files via functions, transform only unprocessed <span class="mono">fn_src</span> values.</td>
+                <td>Fixture tests pass and a dry run reports expected missing periods after <span class="mono">20240930</span>.</td>
+              </tr>
+              <tr>
+                <td>5. Rentboard pipeline</td>
+                <td>Split scrape, XLSX-to-CSV, normalize, and final-stack logic; replace <span class="mono">append</span>; handle monthly files through latest year.</td>
+                <td>Fixture tests pass and dry run reports missing months after <span class="mono">2024-08</span>.</td>
+              </tr>
+              <tr>
+                <td>6. Append update</td>
+                <td>Run the active flows only: nswgov ETL1-3 and rentboard ETL1 wrapper. Do not run legacy etl4.</td>
+                <td>Final CSVs grow only by new periods; schemas remain unchanged; duplicates are within expected historical tolerance only.</td>
+              </tr>
+              <tr>
+                <td>7. Final audit</td>
+                <td>Compare before/after summaries, latest dates, numeric parsing, null rates, and source-period counts.</td>
+                <td>Write a short update report with commands run and changed row counts.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tests" class="section-anchor mb-6">
+      <div class="bg-base-100 border border-base-content/10 rounded-lg p-5">
+        <h2 class="text-xl font-semibold mb-3">Test Matrix Using Trusted Data</h2>
+        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div class="card bg-base-200 rounded-lg">
+            <div class="card-body">
+              <h3 class="card-title text-base">Output contract tests</h3>
+              <p class="text-sm">Assert exact column names, minimum row counts, latest baseline dates, and stable final filenames for both trusted CSVs.</p>
+            </div>
+          </div>
+          <div class="card bg-base-200 rounded-lg">
+            <div class="card-body">
+              <h3 class="card-title text-base">NSW link discovery tests</h3>
+              <p class="text-sm">Use saved current HTML fixtures to assert yearly and weekly links are classified by URL path and filename, not button class.</p>
+            </div>
+          </div>
+          <div class="card bg-base-200 rounded-lg">
+            <div class="card-body">
+              <h3 class="card-title text-base">NSW DAT parser tests</h3>
+              <p class="text-sm">Parse a tiny DAT fixture into long records and compare against a golden CSV derived from the known mapping.</p>
+            </div>
+          </div>
+          <div class="card bg-base-200 rounded-lg">
+            <div class="card-body">
+              <h3 class="card-title text-base">NSW transform tests</h3>
+              <p class="text-sm">Feed trusted ETL2 sample rows and assert the final wide schema matches <span class="mono">data/nswgov_df.csv</span>.</p>
+            </div>
+          </div>
+          <div class="card bg-base-200 rounded-lg">
+            <div class="card-body">
+              <h3 class="card-title text-base">Rentboard parser tests</h3>
+              <p class="text-sm">Use a small generated XLSX with header row 2 and expected columns to assert normalized output columns and date parsing.</p>
+            </div>
+          </div>
+          <div class="card bg-base-200 rounded-lg">
+            <div class="card-body">
+              <h3 class="card-title text-base">Append behavior tests</h3>
+              <p class="text-sm">Start from a trusted subset, add one synthetic newer period, then prove old rows are preserved and only new period rows are added.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-anchor mb-6">
+      <div class="bg-base-100 border border-base-content/10 rounded-lg p-5">
+        <h2 class="text-xl font-semibold mb-3">Actual Commands After Implementation</h2>
+        <p class="opacity-80 mb-4">These are target commands for the improved pipeline, not commands to run before the path and test changes exist.</p>
+        <div class="grid gap-4 lg:grid-cols-2">
+          <div class="mockup-code text-sm">
+            <pre data-prefix="$"><code>python -m pytest</code></pre>
+            <pre data-prefix="$"><code>python -m propertyiq_getdata audit --data-dir data</code></pre>
+            <pre data-prefix="$"><code>python -m propertyiq_getdata nswgov pull --data-dir data</code></pre>
+            <pre data-prefix="$"><code>python -m propertyiq_getdata nswgov extract --data-dir data</code></pre>
+            <pre data-prefix="$"><code>python -m propertyiq_getdata nswgov transform --data-dir data</code></pre>
+          </div>
+          <div class="mockup-code text-sm">
+            <pre data-prefix="$"><code>python -m propertyiq_getdata rentboard update --data-dir data</code></pre>
+            <pre data-prefix="$"><code>python -m propertyiq_getdata audit --data-dir data --after</code></pre>
+            <pre data-prefix="$"><code>python -m pytest</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="risks" class="section-anchor mb-8">
+      <div class="grid gap-4 lg:grid-cols-2">
+        <div class="bg-base-100 border border-base-content/10 rounded-lg p-5">
+          <h2 class="text-xl font-semibold mb-3">Known Risks</h2>
+          <div class="space-y-3">
+            <div class="alert alert-error alert-soft"><span><strong>Duplicate or corrected periods:</strong> newer annual NSW files may overlap weekly rows already captured. Use period keys and audit counts before final concat.</span></div>
+            <div class="alert alert-warning alert-soft"><span><strong>Source layout drift:</strong> both live sites have enough naming/class variation to require fixture tests around discovery.</span></div>
+            <div class="alert alert-warning alert-soft"><span><strong>Mixed historical typing:</strong> trusted CSVs contain old string-like values such as <span class="mono">U</span> in rent fields, so validation must preserve compatibility while checking new rows more strictly.</span></div>
+            <div class="alert alert-info alert-soft"><span><strong>Large files:</strong> full CSV tests should use sampled fixtures; final audits can stream or chunk read the trusted CSVs.</span></div>
+          </div>
+        </div>
+        <div class="bg-base-100 border border-base-content/10 rounded-lg p-5">
+          <h2 class="text-xl font-semibold mb-3">Open Review Points</h2>
+          <div class="space-y-3">
+            <div class="collapse collapse-arrow bg-base-200 rounded-lg">
+              <input type="checkbox">
+              <div class="collapse-title font-medium">Raw/intermediate data location</div>
+              <div class="collapse-content text-sm opacity-80">
+                Recommended: <span class="mono">data/raw/{source}</span> and <span class="mono">data/interim/{source}</span>, while final files stay at <span class="mono">data/*.csv</span>.
+              </div>
+            </div>
+            <div class="collapse collapse-arrow bg-base-200 rounded-lg">
+              <input type="checkbox">
+              <div class="collapse-title font-medium">How much backward compatibility to keep</div>
+              <div class="collapse-content text-sm opacity-80">
+                Recommended: keep <span class="mono">etl1_pull/...</span>, <span class="mono">etl2_extract/...</span>, and <span class="mono">etl3_transform/...</span> as wrappers for now, then retire them after a successful update.
+              </div>
+            </div>
+            <div class="collapse collapse-arrow bg-base-200 rounded-lg">
+              <input type="checkbox">
+              <div class="collapse-title font-medium">Whether to revive etl4</div>
+              <div class="collapse-content text-sm opacity-80">
+                Recommended: no. Treat etl4 as a separate project because it targets legacy listing-source joins, not the two trusted CSVs requested here.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
