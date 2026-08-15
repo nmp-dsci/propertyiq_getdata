@@ -9,7 +9,6 @@ from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
-import requests
 from bs4 import BeautifulSoup
 
 from ..core.io import atomic_write_csv
@@ -17,7 +16,28 @@ from ..core.manifest import write_manifest
 from ..core.paths import get_paths
 
 
-SOURCE_URL = "https://valuation.property.nsw.gov.au/embed/propertySalesInformation"
+# The Valuer General retired the portal page this scraper used to parse
+# (valuation.property.nsw.gov.au/embed/propertySalesInformation now redirects to
+# a portal root that reports the service "currently unavailable"), and the bulk
+# files moved to the address below. Two things about that host shape this module:
+#
+#   * The directory index is 403, so there is no listing left to scrape. File
+#     names are fully predictable instead -- weekly archives are Mondays,
+#     yearly archives are a plain year -- so periods are enumerated and probed.
+#   * A WAF rejects non-browser TLS handshakes. Plain `requests` gets 403 on a
+#     file that a browser downloads fine, no matter what headers it sends, so
+#     transfers go through curl_cffi impersonating Chrome. This is a TLS
+#     fingerprint problem, not a JavaScript one -- no browser is needed.
+PSI_BASE = "https://www.valuergeneral.nsw.gov.au/__psi"
+SOURCE_URL = f"{PSI_BASE}/weekly/"
+PORTAL_URL = "https://valuation.property.nsw.gov.au/"
+
+# Weekly archives are published on Mondays; the one Tuesday in 14 years of
+# history is a public-holiday shift, so probing is by date rather than by rule.
+FIRST_WEEKLY = dt.date(2012, 1, 2)
+FIRST_YEARLY = 2001
+IMPERSONATE = "chrome"
+
 SOURCE_ID = "nswgov"
 FINAL_COLUMNS = [
     "file",
@@ -51,19 +71,141 @@ FINAL_COLUMNS = [
 ]
 
 
-def make_session() -> requests.Session:
-    session = requests.Session()
-    session.headers.update(
-        {
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/126.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-    )
+def make_session():
+    """A session that can actually reach the bulk files.
+
+    curl_cffi rather than requests: the host fronts the archives with a WAF that
+    inspects the TLS handshake, so a plain `requests` call is refused with 403
+    even when it sends a browser User-Agent and Referer, while the identical
+    request from Chrome succeeds. Impersonating Chrome's handshake is what makes
+    the download work; headers alone do not. The object is API-compatible with
+    `requests.Session` for the `.get`/`.head` calls used here.
+    """
+
+    from curl_cffi import requests as curl_requests
+
+    session = curl_requests.Session(impersonate=IMPERSONATE)
+    session.headers.update({"Referer": PORTAL_URL})
     return session
+
+
+def weekly_period_dates(start: dt.date, end: dt.date) -> list[dt.date]:
+    """Every Monday in ``[start, end]``, oldest first."""
+
+    first = start + dt.timedelta(days=(7 - start.weekday()) % 7)
+    return [
+        first + dt.timedelta(days=7 * i)
+        for i in range((end - first).days // 7 + 1)
+        if first + dt.timedelta(days=7 * i) <= end
+    ]
+
+
+def candidate_links(
+    terms: Iterable[str] = ("yearly", "weekly"),
+    *,
+    since: dt.date | None = None,
+    today: dt.date | None = None,
+) -> pd.DataFrame:
+    """Build the URLs a period *would* have, without asking the network.
+
+    Pure and therefore testable. ``since`` bounds the weekly scan so a routine
+    run probes a handful of URLs rather than the 750-odd Mondays since 2012;
+    history is better fetched through the yearly archives anyway.
+    """
+
+    today = today or dt.date.today()
+    terms = set(terms)
+    records: list[dict[str, str]] = []
+
+    if "weekly" in terms:
+        start = max(since + dt.timedelta(days=1), FIRST_WEEKLY) if since else FIRST_WEEKLY
+        for day in weekly_period_dates(start, today):
+            records.append(
+                {
+                    "term": "weekly",
+                    "period": f"{day:%Y%m%d}",
+                    "href": f"{PSI_BASE}/weekly/{day:%Y%m%d}.zip",
+                }
+            )
+
+    if "yearly" in terms:
+        first_year = since.year if since else FIRST_YEARLY
+        for year in range(first_year, today.year + 1):
+            records.append(
+                {"term": "yearly", "period": str(year), "href": f"{PSI_BASE}/yearly/{year}.zip"}
+            )
+
+    columns = ["term", "period", "href"]
+    if not records:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(records, columns=columns).sort_values(["term", "period"])
+
+
+class ProbeError(RuntimeError):
+    """A period's existence could not be established, so the scan is not trustworthy."""
+
+
+def probe_links(
+    candidates: pd.DataFrame,
+    session=None,
+    workers: int = 1,
+    attempts: int = 3,
+) -> pd.DataFrame:
+    """Keep the candidates the server actually publishes.
+
+    The directory index is 403, so existence is established one HEAD at a time.
+    A period that has not been published yet answers 404, which is how the scan
+    finds the end of the data rather than by guessing a cutoff.
+
+    Probing is sequential by default, and that is a correctness decision rather
+    than a lazy one. Under concurrent load this host starts answering 404 for
+    files that plainly exist -- verified: three weeks that return 200 on five
+    sequential attempts each were reported absent by a four-thread scan, and a
+    rate-limit 404 is indistinguishable from "not published yet". Since a
+    routine run only probes the handful of periods after the watermark, there is
+    nothing to gain by fanning out and a whole week of sales to lose. ``workers``
+    is still available for a bulk backfill, where the yearly archives are the
+    better tool anyway.
+
+    A transport error is likewise never read as "absent": a dropped connection
+    is *unknown*, not 404, and folding the two together would quietly skip real
+    data while still reporting success. Unresolved probes raise instead.
+    """
+
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    if candidates.empty:
+        return candidates.copy()
+
+    local = threading.local()
+    shared = session
+
+    def head(href: str):
+        if shared is not None:
+            return shared.head(href, timeout=60)
+        if not hasattr(local, "session"):
+            local.session = make_session()
+        return local.session.head(href, timeout=60)
+
+    def exists(href: str) -> bool:
+        last: Exception | None = None
+        for _ in range(attempts):
+            try:
+                return head(href).status_code == 200
+            except Exception as error:  # noqa: BLE001 - retried, then re-raised below
+                last = error
+        raise ProbeError(f"could not determine whether {href} exists: {last!r}") from last
+
+    hrefs = candidates["href"].tolist()
+    # An injected session is assumed single-threaded (tests pass a fake); only
+    # the self-managed, per-thread case fans out.
+    if shared is not None or workers <= 1:
+        found = [exists(href) for href in hrefs]
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            found = list(pool.map(exists, hrefs))
+    return candidates[pd.Series(found, index=candidates.index)].copy()
 
 
 def nswgov_dat_map() -> pd.DataFrame:
@@ -143,10 +285,20 @@ def discover_links(html: str) -> pd.DataFrame:
     return pd.DataFrame(records).drop_duplicates(["term", "period", "href"]).sort_values(["term", "period"])
 
 
-def fetch_links(session: requests.Session | None = None) -> pd.DataFrame:
-    session = session or make_session()
-    html = session.get(SOURCE_URL, timeout=60).text
-    return discover_links(html)
+def fetch_links(
+    session=None,
+    terms: Iterable[str] = ("yearly", "weekly"),
+    since: dt.date | None = None,
+) -> pd.DataFrame:
+    """Discover the archives the server currently publishes.
+
+    Enumerate-and-probe rather than parse-a-listing: the index that
+    :func:`discover_links` used to read is gone (403), but the file names are
+    entirely predictable, so the candidate set can be generated locally and
+    confirmed with HEAD requests.
+    """
+
+    return probe_links(candidate_links(terms, since=since), session=session)
 
 
 def latest_final_period(data_dir: str | Path | None = None) -> str | None:
@@ -241,16 +393,23 @@ def pull_nswgov(
     terms: Iterable[str] = ("yearly", "weekly"),
     new_only: bool = True,
     dry_run: bool = False,
-    session: requests.Session | None = None,
+    session=None,
 ) -> pd.DataFrame:
     paths = get_paths(data_dir)
     paths.ensure_base_dirs()
     raw_dir = paths.raw_source_dir(SOURCE_ID)
-    links = fetch_links(session=session)
     terms = set(terms)
+
+    # Bound the probe by the watermark on a routine run. Discovery now costs one
+    # HEAD per candidate period, so scanning from 2012 every time would mean 750
+    # requests to find the two or three weeks that are actually new.
+    watermark = latest_final_period(data_dir=data_dir) if new_only else None
+    since = dt.datetime.strptime(watermark, "%Y%m%d").date() if watermark else None
+
+    links = fetch_links(session=session, terms=terms, since=since)
     links = links[links["term"].isin(terms)].copy()
     if new_only:
-        links = filter_new_links(links, latest_final_period(data_dir=data_dir))
+        links = filter_new_links(links, watermark)
     if links.empty:
         return pd.DataFrame(columns=["term", "period", "href", "path", "status"])
 
@@ -264,12 +423,7 @@ def pull_nswgov(
             payload_dir.parent.mkdir(parents=True, exist_ok=True)
             zip_path = payload_dir.with_suffix(".zip")
             print(f"Downloading {record['term']} {record['period']}: {record['href']}")
-            # Referer belongs on the file download — it is the page the link
-            # came from — but NOT on the session, because sending it while
-            # fetching that same page makes the site redirect to itself forever.
-            response = session.get(
-                record["href"], timeout=120, headers={"Referer": SOURCE_URL}
-            )
+            response = session.get(record["href"], timeout=120)
             response.raise_for_status()
             zip_path.write_bytes(response.content)
             _safe_extract(zip_path, payload_dir)

@@ -192,10 +192,10 @@ footer{border-top:1px solid var(--line);margin-top:70px}
   <p class="sec-sub">Executed 14&nbsp;Aug&nbsp;2026. The plan below is the spec; this section is what actually happened, with the measured numbers.</p>
 
   <div class="metrics" style="margin-top:18px">
-    <div class="met"><span class="met-n">869</span><span class="met-l">partitions live in <code>landing/</code> (754 + 115)</span></div>
-    <div class="met"><span class="met-n">1</span><span class="met-l">file uploaded for a fresh month — a real delta</span></div>
+    <div class="met"><span class="met-n">875</span><span class="met-l">partitions live in <code>landing/</code> (760 + 115)</span></div>
+    <div class="met"><span class="met-n">7</span><span class="met-l">files uploaded across two real deltas</span></div>
     <div class="met"><span class="met-n">PASS</span><span class="met-l">gold parity vs the dbt reference</span></div>
-    <div class="met"><span class="met-n">60</span><span class="met-l">tests green (33 getdata + 27 databricks)</span></div>
+    <div class="met"><span class="met-n">71</span><span class="met-l">tests green (44 getdata + 27 databricks)</span></div>
     <div class="met"><span class="met-n">5.2×</span><span class="met-l">smaller: 1.09&nbsp;MB CSV → 210&nbsp;KB Parquet</span></div>
     <div class="met"><span class="met-n">4/4</span><span class="met-l">medallion tasks green, twice</span></div>
   </div>
@@ -250,14 +250,30 @@ footer{border-top:1px solid var(--line);margin-top:70px}
     <p>Auto Loader read exactly one new file (bronze_rent went 115 → 116 files, <code>+28,103</code> rows — precisely the July count), the medallion job went green on all four tasks including the seven post-load checks, and the parity harness then passed with the rent mart at <strong>115 months</strong>, 3,269,130 bonds. The new month flowed the whole way through, and nothing else moved.</p>
   </div>
 
-  <div class="callout red">
-    <h4>⚠ The NSW Valuer General scraper is broken upstream — sales data is frozen at 2026-06-29</h4>
-    <p>Attempting the sales half of the fresh scrape surfaced <strong>two separate upstream breakages</strong>, unrelated to this work:</p>
+  <div class="callout star">
+    <h4>◆ RESOLVED — the NSW Valuer General scraper is fixed; sales now run to 2026-08-10</h4>
+    <p>This section previously reported the sales feed as dead and awaiting a decision. It has since been diagnosed with a real browser and fixed. <strong>The page was never JavaScript-rendered — that diagnosis was wrong.</strong> Three separate things were going on:</p>
     <ul>
-      <li><strong>Fixed here:</strong> <code>make_session()</code> set <code>Referer: SOURCE_URL</code> on the session, so fetching that very page sent a self-referential Referer — which the site now answers with an infinite redirect loop (<code>TooManyRedirects: Exceeded 30 redirects</code>). Isolated it header by header: <code>Referer</code> alone reproduces it, <code>User-Agent</code> and <code>Accept</code> do not. The header now rides on the file download, where it is legitimate, instead of the session.</li>
-      <li><strong>Not fixed — needs a decision:</strong> with the loop gone, <code>/embed/propertySalesInformation</code> now 302s to the portal root, which carries no download links. The root only exposes <code>javascript:launch("propertySalesInformation")</code> → <code>/launch/…</code> → <code>/embed/propertySalesInformation/</code>, and every one of those serves the same 12,358-byte root page to a plain HTTP client. The DAT links appear to be JavaScript-rendered now, so <code>discover_links</code> finds zero.</li>
+      <li><strong>A self-referential <code>Referer</code></strong> on the session made the old portal page redirect to itself forever (<code>TooManyRedirects</code>). Isolated header by header; <code>Referer</code> alone reproduces it.</li>
+      <li><strong>The portal endpoint is genuinely retired.</strong> It now 302s to a root page that reads <em>"the application you requested is currently unavailable"</em>. Other VG services still launch fine, so only this one is gone. The bulk archives moved to <code>valuergeneral.nsw.gov.au/__psi/weekly/YYYYMMDD.zip</code> and <code>/__psi/yearly/YYYY.zip</code>, and that directory index is 403 — there is no listing left to scrape.</li>
+      <li><strong>The 403 on the files themselves is TLS fingerprinting, not JavaScript.</strong> A browser <code>fetch</code> pulls the zip; <code>requests</code> is refused whatever headers it sends. <code>curl_cffi</code> impersonating Chrome's handshake returns the byte-identical 345,164-byte file — so the fix is a small library, not a headless browser in the ETL.</li>
     </ul>
-    <p>This blocks new <em>sales</em> data only. Everything above still verifies against the 754 sales partitions already collected, and the rent path is unaffected. Reviving it likely means driving the page with a real browser or finding the JSON endpoint behind it — worth its own piece of work, and I did not want to guess further at a government site's internals without checking with you first.</p>
+    <p>Discovery is now enumerate-and-probe: weekly archives are Mondays, so candidates are built locally and confirmed with one HEAD each; a 404 marks the end of published data. <strong>760 partitions, up from 754</strong> — six consecutive weeks recovered with no gaps — and the whole chain re-verified green through gold.</p>
+  </div>
+
+  <div class="callout warn">
+    <h4>⚑ A bug I introduced fixing it, worth remembering</h4>
+    <p>The first version of the probe used a thread pool with a shared session and a bare <code>except: return False</code>. This host <strong>rate-limits concurrency by answering 404</strong> — indistinguishable from "not published yet" — so three weeks that return 200 on every sequential attempt were silently dropped, leaving a real two-week hole in the data that the run still reported as success.</p>
+    <p class="one">Probing is now sequential by default (a routine run probes about five URLs, so there was nothing to gain by fanning out) and a transport error retries then raises <code>ProbeError</code> rather than quietly shrinking the result. Both behaviours are pinned by tests.</p>
+  </div>
+
+  <div class="callout red">
+    <h4>⚠ Two pre-existing problems this surfaced — still unfixed</h4>
+    <ul>
+      <li><strong>The watermark strands periods.</strong> Recovering the last two weeks needed <code>--all-periods</code>, because once the watermark advanced past them the trusted-final filter refused to backfill. A mid-run failure can therefore leave a permanent gap that a normal run will never fill.</li>
+      <li><strong><code>extract</code> cannot read the yearly archives.</strong> <code>--all-periods</code> also pulls them, which crashes with <code>Could not infer YYYYMMDD period for .../ARCHIVE_SALES_2001.DAT</code>. Worked around by scoping extract to the weekly payloads.</li>
+    </ul>
+    <p>Neither is caused by this work, and neither is fixed.</p>
   </div>
 
   <h3 class="blk">What shipped, beyond the original plan</h3>

@@ -141,6 +141,34 @@ Rentboard is self-contained:
 uv run propertyiq-getdata rentboard update --data-dir data
 ```
 
+### How NSW Gov archives are found
+
+The Valuer General retired the portal page this scraper used to parse, and the
+bulk archives now live at a predictable address:
+
+```
+https://www.valuergeneral.nsw.gov.au/__psi/weekly/YYYYMMDD.zip   # Mondays
+https://www.valuergeneral.nsw.gov.au/__psi/yearly/YYYY.zip
+```
+
+Two properties of that host shape how `pull` works:
+
+- **There is no listing to scrape** — the directory index returns 403. Periods
+  are enumerated locally (`candidate_links`) and confirmed with one HEAD each
+  (`probe_links`); a period that has not been published yet answers 404, which
+  is how the scan finds the end of the data. A routine run only probes the few
+  periods after the watermark, not all 750 Mondays since 2012.
+- **A WAF rejects non-browser TLS handshakes.** Plain `requests` gets 403 on a
+  file a browser downloads fine, whatever headers it sends, so transfers use
+  `curl_cffi` impersonating Chrome. This is a TLS-fingerprint problem, not a
+  JavaScript one — no headless browser is involved.
+
+Probing is deliberately **sequential**. Under concurrent load the host starts
+answering 404 for files that plainly exist, and a rate-limit 404 is
+indistinguishable from "not published yet", so fanning out risks silently
+skipping a week of sales. A transport error is never read as absent either — it
+raises `ProbeError` after retries rather than quietly shrinking the result.
+
 ## Maintenance
 
 Each source can rebuild its manifest from the partitions already on disk, without
