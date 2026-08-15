@@ -30,10 +30,12 @@ propertyiq_getdata/          # the package — the pipeline
 ├── sources/                 # one module per source; pull/extract/transform are functions here
 │   ├── nswgov.py            #   NSW Valuer General property sales
 │   └── rentboard.py         #   NSW rental bond lodgements
+├── sinks/                   # one module per publish target (counterpart of sources/)
+│   └── databricks.py        #   updates-only Parquet -> Unity Catalog volume
 ├── audit.py                 # cross-source output summary / integrity check
 └── diagnostics.py           # ad-hoc comparison/analysis helpers
 tests/                       # contract + per-source regression tests
-scripts/                     # rclone Drive sync + update-and-push helpers
+scripts/                     # rclone Drive sync, update-and-push, dual-pipeline refresh, Parquet inspection
 archive/                     # historical, unmaintained code — see archive/README.md
 ```
 
@@ -61,6 +63,13 @@ compatibility exports only, produced on demand by `export-legacy`.
 The data dir is resolved by `paths.resolve_data_dir`: explicit `--data-dir` >
 `PROPERTYIQ_DATA_DIR` > `DATA_DIR` > repo-local `data/`.
 
+Two downstream consumers read these outputs, and neither is legacy:
+
+| Consumer | Feed | Pipeline |
+|---|---|---|
+| `data-qa-agent` | monolith CSVs via `export-legacy` | dlt → dbt → Postgres marts |
+| `databricks-propertyiq` | Parquet via `publish databricks` (below) | Auto Loader → bronze/silver/gold |
+
 ## The sources
 
 **nswgov** — NSW Valuer General property sales.
@@ -79,6 +88,45 @@ scrapes `.xlsx` links, classifies annual vs monthly by title regex, prefers
 monthly when a year has months, normalizes to `FINAL_COLUMNS`, and writes/merges
 `normalized/rentboard/lodgements/year=YYYY/month=MM.csv` + manifest.
 Source: https://www.nsw.gov.au/housing-and-construction/rental-forms-surveys-and-data/rental-bond-data
+
+## Publishing to Databricks
+
+`sinks/databricks.py` (`publish_databricks`, CLI: `publish databricks`) converts
+new or changed partitions to Parquet and uploads them to a Unity Catalog volume
+for `databricks-propertyiq`'s Auto Loader pipeline to ingest:
+
+```text
+/Volumes/workspace/propertyiq/propertyiq/landing/
+  sales/period=YYYYMMDD_<sha8>.parquet
+  lodgements/month=YYYY-MM_<sha8>.parquet
+```
+
+Planning and Parquet conversion are pure functions; only `VolumeSink` touches
+the network, and it is injected, so the tests in
+`tests/test_publish_databricks.py` run offline against a fake sink.
+
+- **Stateless.** Each file is named `<partition>_<sha8>.parquet` from the
+  partition's sha256 already recorded in `data/manifests/*.csv`, so the set of
+  names to upload is a plain set difference against the volume listing — no
+  watermark, no state file.
+- **Append-only by design.** A rewritten partition (rentboard rewrites its
+  trailing month every run) uploads as a *new* file beside the old one; nothing
+  is overwritten or deleted (`overwrite=False`). Auto Loader tracks files
+  exactly-once and never re-reads a changed file, so the consumer's silver
+  layer picks the newest file per partition.
+- **Every business column is a string**, matching the `FINAL_COLUMNS` contract
+  pinned by `tests/test_contract_outputs.py`; the consumer types once, in one
+  tested place, because the sales data carries three numeric encodings across
+  its history. `keep_default_na=False` on read keeps empty string as empty
+  string instead of becoming NaN/NULL.
+- Auth reuses a `~/.databrickscfg` profile via `--profile` (default `DEFAULT`);
+  no credential is read, printed, or stored — this repo is public.
+- `scripts/inspect_parquet.py` inspects what was actually uploaded: a publish
+  converts to a temp dir and deletes it after upload, so nothing is left on
+  disk to look at otherwise.
+- `scripts/refresh_dual_pipeline.sh` runs one idempotent cycle across both
+  consumers: scrape, rebuild manifests, export the monolith CSVs, publish the
+  Parquet delta, then verify.
 
 ## Running
 
@@ -100,9 +148,10 @@ into partitions; `export-legacy` stacks partitions back into the monolith shape;
 
 Dependencies are declared in `pyproject.toml` and pinned in `uv.lock` (commit
 both). Runtime: `beautifulsoup4, pandas, numpy, requests, openpyxl` (+
-`matplotlib` for `diagnostics.py`); dev group: `pytest`. Add one with
-`uv add <pkg>` (or `uv add --dev <pkg>`). Note: the old `stem`/Tor dependency was
-only used by `archive/` and is no longer installed.
+`matplotlib` for `diagnostics.py`, `databricks-sdk` + `pyarrow` for
+`sinks/databricks.py`); dev group: `pytest`. Add one with `uv add <pkg>` (or
+`uv add --dev <pkg>`). Note: the old `stem`/Tor dependency was only used by
+`archive/` and is no longer installed.
 
 ## Conventions & gotchas
 
@@ -117,6 +166,12 @@ only used by `archive/` and is no longer installed.
   rentboard depends on link title regexes (`MONTH_PATTERN`, the year regex) and
   the xlsx header row (`read_excel(header=2)`) + expected `XLSX_COLUMNS`. Update
   these when a scrape returns nothing.
+- **Known issue:** the NSW Valuer General sales page now appears to be
+  JavaScript-rendered, so `discover_links` currently finds no links there. A
+  session-level `Referer: SOURCE_URL` header used to make the page answer with
+  an infinite redirect loop; that's fixed (`Referer` now goes only on the file
+  download in `pull_nswgov`, where it's legitimate), but the page itself still
+  needs a scraper update — left for separate work.
 - Partition writes are **atomic** (write `.csv.tmp`, then `Path.replace`), so an
   interrupted run never leaves a half-written partition.
 - After changing output shape, update the tests in `tests/` — they pin the

@@ -121,6 +121,10 @@ scripts/refresh_dual_pipeline.sh              # full cycle, idempotent
 scripts/refresh_dual_pipeline.sh --dry-run    # show what would happen
 ```
 
+A publish converts partitions in a temp dir and deletes it after upload, so
+nothing is left on disk to inspect afterwards — use `scripts/inspect_parquet.py`
+to look at what was actually sent.
+
 ## Source Stages
 
 NSW Gov still has explicit pull/extract/transform stages:
