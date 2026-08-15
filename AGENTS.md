@@ -73,13 +73,15 @@ Two downstream consumers read these outputs, and neither is legacy:
 ## The sources
 
 **nswgov** — NSW Valuer General property sales.
-Source: https://valuation.property.nsw.gov.au/embed/propertySalesInformation
+Source: https://www.valuergeneral.nsw.gov.au/__psi/{weekly/YYYYMMDD,yearly/YYYY}.zip
+(see "How NSW Gov archives are found" in the README for why discovery is
+enumerate-and-probe rather than scraping a listing).
 `.DAT` file format spec: https://www.valuergeneral.nsw.gov.au/__data/assets/pdf_file/0015/216402/Current_Property_Sales_Data_File_Format_2001_to_Current.pdf
 Explicit stages, all incremental/idempotent:
 
 | Stage | Function | In → Out |
 |-------|----------|----------|
-| pull | `pull_nswgov` | Scrapes `yearly` (`YYYY.zip`) and `weekly` (`YYYYMMDD.zip`) links, downloads & unzips new periods into `data/raw/nswgov/...`. |
+| pull | `pull_nswgov` | Enumerates `yearly` (`YYYY.zip`) and `weekly` (`YYYYMMDD.zip`) candidates (`candidate_links`), confirms each with a HEAD (`probe_links`), downloads & unzips new periods into `data/raw/nswgov/...`. |
 | extract | `extract_nswgov` | Parses `;`-delimited `.DAT` (record types A/B/C/D via `nswgov_dat_map`), melts to long form, writes one CSV per period to `data/interim/nswgov/output_etl2/`. |
 | transform | `transform_nswgov` | Keeps record_type `B`, pivots labels to `FINAL_COLUMNS`, writes `normalized/nswgov/sales/period=YYYYMMDD.csv` (atomic temp-then-replace) and refreshes the manifest. |
 
@@ -147,8 +149,8 @@ into partitions; `export-legacy` stacks partitions back into the monolith shape;
 `nswgov manifest` / `rentboard manifest` rebuild a manifest from partitions.
 
 Dependencies are declared in `pyproject.toml` and pinned in `uv.lock` (commit
-both). Runtime: `beautifulsoup4, pandas, numpy, requests, openpyxl` (+
-`matplotlib` for `diagnostics.py`, `databricks-sdk` + `pyarrow` for
+both). Runtime: `beautifulsoup4, pandas, numpy, requests, curl-cffi, openpyxl`
+(+ `matplotlib` for `diagnostics.py`, `databricks-sdk` + `pyarrow` for
 `sinks/databricks.py`); dev group: `pytest`. Add one with `uv add <pkg>` (or
 `uv add --dev <pkg>`). Note: the old `stem`/Tor dependency was only used by
 `archive/` and is no longer installed.
@@ -161,17 +163,17 @@ both). Runtime: `beautifulsoup4, pandas, numpy, requests, openpyxl` (+
   `latest_lodgement_dt` (rentboard).
 - Stages **raise on zero rows** (`ZERO rows added ... investigate`) — that is the
   signal the source layout changed and a scraper needs updating.
-- **Site-layout changes are the usual break point.** nswgov depends on `.zip`
-  href patterns and `yearly`/`weekly` classification in `discover_links`;
-  rentboard depends on link title regexes (`MONTH_PATTERN`, the year regex) and
-  the xlsx header row (`read_excel(header=2)`) + expected `XLSX_COLUMNS`. Update
-  these when a scrape returns nothing.
-- **Known issue:** the NSW Valuer General sales page now appears to be
-  JavaScript-rendered, so `discover_links` currently finds no links there. A
-  session-level `Referer: SOURCE_URL` header used to make the page answer with
-  an infinite redirect loop; that's fixed (`Referer` now goes only on the file
-  download in `pull_nswgov`, where it's legitimate), but the page itself still
-  needs a scraper update — left for separate work.
+- **Site-layout changes are the usual break point.** nswgov depends on the
+  `__psi` archive URL shape and Monday-dated weekly periods (`candidate_links`,
+  `probe_links`); rentboard depends on link title regexes (`MONTH_PATTERN`, the
+  year regex) and the xlsx header row (`read_excel(header=2)`) + expected
+  `XLSX_COLUMNS`. Update these when a probe/scrape returns nothing.
+  `discover_links` (the old listing-page parser) is kept and tested but is no
+  longer on the live `pull_nswgov` path.
+- **nswgov probing is deliberately sequential** (`probe_links` defaults to
+  `workers=1`) — see the README section above for why concurrent HEADs produce
+  false 404s on this host. A transport error raises `ProbeError` rather than
+  being treated as "not published".
 - Partition writes are **atomic** (write `.csv.tmp`, then `Path.replace`), so an
   interrupted run never leaves a half-written partition.
 - After changing output shape, update the tests in `tests/` — they pin the
