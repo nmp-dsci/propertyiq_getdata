@@ -1,8 +1,6 @@
 globals.sh
 .DS_Store
 .venv/
-.lavish/*
-!.lavish/propertyiq_refactor_split_outputs_plan.html
 __pycache__/
 .pytest_cache/
 *.egg-info/

@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PropertyIQ Data Storage Architecture Plan</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :where(.grid, .flex) > * { min-width: 0; }
+    :where(p, h1, h2, h3, h4, h5, h6, li, dd, td, th, .badge) { overflow-wrap: anywhere; }
+    html { scroll-behavior: smooth; }
+    body { background: var(--color-base-200); }
+    .piq-shell { max-width: 1180px; margin: 0 auto; }
+    .piq-section { scroll-margin-top: 24px; }
+    .piq-card { border: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent); }
+    .piq-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .piq-ribbon {
+      background:
+        linear-gradient(135deg, color-mix(in oklab, var(--color-primary) 16%, transparent), transparent 36%),
+        linear-gradient(315deg, color-mix(in oklab, var(--color-accent) 14%, transparent), transparent 42%),
+        var(--color-base-100);
+    }
+    .piq-mermaid-wrap {
+      background: var(--color-base-100);
+      border: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
+      border-radius: 0.5rem;
+      overflow-x: auto;
+    }
+    .piq-mermaid-wrap svg { max-width: none; min-width: 720px; }
+    .piq-small { font-size: 0.88rem; line-height: 1.45; }
+  </style>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      securityLevel: "strict",
+      themeVariables: {
+        primaryColor: "#172554",
+        primaryTextColor: "#f8fafc",
+        primaryBorderColor: "#60a5fa",
+        lineColor: "#94a3b8",
+        secondaryColor: "#064e3b",
+        tertiaryColor: "#431407",
+        background: "#111827",
+        mainBkg: "#172554",
+        secondBkg: "#064e3b",
+        tertiaryBkg: "#431407",
+        textColor: "#f8fafc",
+        fontFamily: "Inter, ui-sans-serif, system-ui"
+      }
+    });
+  </script>
+</head>
+<body>
+  <main class="piq-shell px-4 py-6 md:px-6 lg:px-8">
+    <section class="piq-ribbon rounded-lg border border-base-content/10 p-6 md:p-8">
+      <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-3xl">
+          <div class="mb-3 flex flex-wrap gap-2">
+            <span class="badge badge-primary badge-soft">Architecture Plan</span>
+            <span class="badge badge-accent badge-soft">Local + Cloud Agnostic</span>
+            <span class="badge badge-info badge-soft">Research-backed</span>
+          </div>
+          <h1 class="text-3xl font-semibold leading-tight tracking-normal md:text-4xl lg:text-5xl">PropertyIQ should become a lake-first ingestion system</h1>
+          <p class="mt-4 text-base md:text-lg">
+            Keep source data and normalized analytical datasets in a portable object-store lake. Treat the database as a serving projection for the app and AI agent, not as the canonical data store.
+          </p>
+        </div>
+        <div class="stats stats-vertical bg-base-100 shadow-sm lg:stats-horizontal">
+          <div class="stat">
+            <div class="stat-title">Current local data</div>
+            <div class="stat-value text-2xl">3.7 GB</div>
+            <div class="stat-desc">raw, interim, normalized, backups</div>
+          </div>
+          <div class="stat">
+            <div class="stat-title">Best first move</div>
+            <div class="stat-value text-2xl">Parquet</div>
+            <div class="stat-desc">plus immutable raw files</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="piq-section mt-6 grid gap-4 lg:grid-cols-3" id="summary">
+      <div class="card piq-card bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title text-lg">Recommendation</h2>
+          <p>Move from repo-local CSV folders plus Google Drive sync to a portable data lake layout: raw source files in Bronze, normalized Parquet in Silver, database-ready views or exports in Gold/Serving.</p>
+        </div>
+      </div>
+      <div class="card piq-card bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title text-lg">Boundary</h2>
+          <p>This repo should own extract, raw preservation, normalization, manifests, and publishable datasets. The database project should load and serve app-specific models unless you explicitly change the repo contract.</p>
+        </div>
+      </div>
+      <div class="card piq-card bg-base-100">
+        <div class="card-body">
+          <h2 class="card-title text-lg">Why not DB-first?</h2>
+          <p>Raw files, historical snapshots, and wide ABS data are better preserved in object storage. Databases are ideal for low-latency serving, constraints, joins, and AI-agent retrieval paths.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="piq-section mt-8" id="current">
+      <div class="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 class="text-2xl font-semibold">Current State Found In Repo</h2>
+          <p class="text-sm opacity-75">Verified from <code>core/paths.py</code>, <code>core/manifest.py</code>, <code>cli.py</code>, scripts, and current <code>data/</code>.</p>
+        </div>
+      </div>
+      <div class="mt-4 overflow-x-auto rounded-lg border border-base-content/10 bg-base-100">
+        <table class="table table-zebra">
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>Current behavior</th>
+              <th>Issue as you scale</th>
+              <th>Target behavior</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="font-medium">Storage API</span></td>
+              <td>Everything resolves to a local <code>Path</code> under <code>data/</code>.</td>
+              <td>Cloud storage requires sync scripts or mounted drives; sources use <code>glob/rglob/open</code> directly.</td>
+              <td>Introduce <code>store_uri</code> plus a local work/cache directory. Support <code>file://</code>, <code>s3://</code>, <code>gs://</code>, and Azure via one storage layer.</td>
+            </tr>
+            <tr>
+              <td><span class="font-medium">Raw data</span></td>
+              <td>Raw zips/xlsx live locally. Current Drive push publishes normalized/manifests/legacy files only.</td>
+              <td>Raw provenance is not safely centralized. A laptop loss or Drive sync mistake can lose reproducibility.</td>
+              <td>Keep raw original bytes in immutable Bronze storage with checksums, source URL, fetched timestamp, headers/etag where available.</td>
+            </tr>
+            <tr>
+              <td><span class="font-medium">Normalized data</span></td>
+              <td>Period-partitioned CSVs under <code>data/normalized/...</code>.</td>
+              <td>CSV is portable but weak for analytical scans, types, compression, and cloud query engines.</td>
+              <td>Write Parquet as canonical normalized output; keep CSV export as compatibility only during migration.</td>
+            </tr>
+            <tr>
+              <td><span class="font-medium">Manifests</span></td>
+              <td>CSV manifests with source, dataset, period, relative path, rows, sha256, created timestamp.</td>
+              <td>Good start, but no run identity, source URL, content type, object version, schema version, or load status.</td>
+              <td>Promote manifests to dataset registry/run ledger, still exportable as CSV for humans.</td>
+            </tr>
+            <tr>
+              <td><span class="font-medium">Database</span></td>
+              <td>Downstream database project loads outputs and serves app/AI agent.</td>
+              <td>Temptation to make this repo both lake and serving DB can blur ownership.</td>
+              <td>Keep the lake as source of truth and database as reproducible serving projection. The loader reads a manifest and records loaded object versions.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="piq-section mt-8" id="target">
+      <h2 class="text-2xl font-semibold">Target Architecture</h2>
+      <p class="mt-2 max-w-3xl opacity-80">The same code should run locally against a filesystem store, or in cloud against object storage. Only configuration changes.</p>
+      <div class="piq-mermaid-wrap mt-4 p-4">
+        <pre class="mermaid">
+flowchart TD
+  A["Public NSW/ABS sources"] --> B["propertyiq_getdata ingestion jobs"]
+  B --> C["Local work/cache directory<br/>zip extraction, temp CSV, retries"]
+  B --> D["Bronze raw object store<br/>original zip/xlsx/dat + metadata sidecars"]
+  C --> E["Silver normalized datasets<br/>Parquet, Hive partitions, schema contracts"]
+  D --> F["Run ledger + manifests<br/>checksums, source URL, object version, row counts"]
+  E --> F
+  E --> G["Ad-hoc analytics<br/>DuckDB locally; Athena/BigQuery/Synapse in cloud"]
+  E --> H["Downstream database loader<br/>idempotent staging + upsert"]
+  H --> I["Serving database<br/>app tables, search indexes, AI-agent retrieval"]
+  F --> H
+        </pre>
+      </div>
+    </section>
+
+    <section class="piq-section mt-8" id="layout">
+      <h2 class="text-2xl font-semibold">Proposed Lake Layout</h2>
+      <div class="mt-4 grid gap-4 lg:grid-cols-2">
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Canonical object-store prefixes</h3>
+            <div class="rounded-lg bg-base-200 p-4 piq-code">propertyiq-lake/
+  bronze/
+    raw/nswgov/sales/period=YYYYMMDD/run_id=.../original.zip
+    raw/rentboard/lodgements/year=YYYY/month=MM/run_id=.../original.xlsx
+    raw/abs/gcp/geography=POA/state=NSW/census_year=YYYY/run_id=.../original.zip
+    metadata/source_fetch_log/year=YYYY/month=MM/*.jsonl
+  stage/
+    nswgov/output_etl2/period=YYYYMMDD/*.parquet
+    abs/table_extracts/census_year=YYYY/state=NSW/geography=POA/table=G01/*.parquet
+  silver/
+    nswgov/sales/period=YYYYMMDD/*.parquet
+    rentboard/lodgements/year=YYYY/month=MM/*.parquet
+    abs/poa/census_year=YYYY/*.parquet
+    abs/poa_columns/census_year=YYYY/*.parquet
+  registry/
+    datasets/*.yaml
+    manifests/source=.../dataset=.../*.parquet
+    runs/year=YYYY/month=MM/*.jsonl
+  exports/
+    csv/normalized/...  # compatibility only</div>
+          </div>
+        </div>
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Layer meanings</h3>
+            <ul class="space-y-3">
+              <li><span class="badge badge-neutral badge-soft">Bronze</span> Raw, source-fidelity files. Do not rewrite. Store original format and metadata.</li>
+              <li><span class="badge badge-info badge-soft">Stage</span> Rebuildable extracts. Keep short retention locally or in cloud only when debugging value is high.</li>
+              <li><span class="badge badge-success badge-soft">Silver</span> Normalized, source-specific analytical datasets. This is the main output of this repo.</li>
+              <li><span class="badge badge-warning badge-soft">Gold/Serving</span> App-ready joins/features/search tables. Prefer the downstream database project for this layer.</li>
+            </ul>
+            <div class="alert alert-info mt-5">
+              <span>Use <code>PROPERTYIQ_STORE_URI=file:///...</code> for local development and <code>s3://</code>, <code>gs://</code>, or Azure Blob in production.</span>
+            </div>
+            <div class="alert alert-warning mt-3">
+              <span>For a local-only setup, keep scratch files in this repo's git-ignored <code>data/</code> folder, but put the durable lake somewhere outside the repo, such as <code>~/propertyiq-lake</code> or an external disk. Point <code>PROPERTYIQ_STORE_URI</code> at that folder.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="piq-section mt-8" id="options">
+      <h2 class="text-2xl font-semibold">Storage Options Scorecard</h2>
+      <div class="mt-4 overflow-x-auto rounded-lg border border-base-content/10 bg-base-100">
+        <table class="table table-zebra">
+          <thead>
+            <tr>
+              <th>Option</th>
+              <th>Fit</th>
+              <th>Pros</th>
+              <th>Costs / risks</th>
+              <th>Recommendation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="font-medium">Local CSV + Google Drive sync</span></td>
+              <td>Prototype / backup</td>
+              <td>Already works; easy to inspect; no cloud infra.</td>
+              <td>Poor raw provenance, weak concurrency, hard to query serverlessly, CSV type drift.</td>
+              <td><span class="badge badge-error badge-soft">Retire as canonical</span></td>
+            </tr>
+            <tr>
+              <td><span class="font-medium">Portable Parquet lake on filesystem/object store</span></td>
+              <td>Best next step</td>
+              <td>Local/cloud agnostic, cheap, compatible with DuckDB, pandas/pyarrow, Athena, BigQuery, Synapse.</td>
+              <td>Single-writer discipline and manifest correctness remain your responsibility.</td>
+              <td><span class="badge badge-success badge-soft">Recommended Phase 1</span></td>
+            </tr>
+            <tr>
+              <td><span class="font-medium">Apache Iceberg lakehouse</span></td>
+              <td>When you need tables, snapshots, schema evolution, multi-engine SQL</td>
+              <td>Open table format; snapshot isolation; time travel; supported by Athena/Glue and many engines.</td>
+              <td>Catalog/maintenance overhead; overkill until Parquet manifest pain appears.</td>
+              <td><span class="badge badge-info badge-soft">Add in Phase 3</span></td>
+            </tr>
+            <tr>
+              <td><span class="font-medium">Delta Lake</span></td>
+              <td>Strong if you choose Databricks or Azure-centric stack</td>
+              <td>ACID transactions, scalable metadata, strong Spark ecosystem.</td>
+              <td>Less neutral if you want maximum AWS/Athena/Snowflake/Dremio flexibility.</td>
+              <td><span class="badge badge-neutral badge-soft">Conditional</span></td>
+            </tr>
+            <tr>
+              <td><span class="font-medium">Warehouse-first: BigQuery/Snowflake/Redshift</span></td>
+              <td>Analytics-first team, less app serving</td>
+              <td>Managed SQL, governance, performance, simpler BI.</td>
+              <td>Raw files still need a lake; portability and cost model depend on provider.</td>
+              <td><span class="badge badge-neutral badge-soft">Not first move</span></td>
+            </tr>
+            <tr>
+              <td><span class="font-medium">Database as source of truth</span></td>
+              <td>Operational-only systems</td>
+              <td>Constraints, indexes, transactions, app reads.</td>
+              <td>Bad fit for original source files, replay, wide ABS tables, cheap historical storage.</td>
+              <td><span class="badge badge-error badge-soft">Avoid</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="piq-section mt-8" id="implementation">
+      <h2 class="text-2xl font-semibold">Implementation Roadmap</h2>
+      <ul class="steps steps-vertical mt-4 w-full lg:steps-horizontal">
+        <li class="step step-primary">Storage layer</li>
+        <li class="step step-primary">Parquet outputs</li>
+        <li class="step">Serverless run</li>
+        <li class="step">DB loader contract</li>
+        <li class="step">Lakehouse upgrade</li>
+      </ul>
+
+      <div class="mt-5 grid gap-4 lg:grid-cols-2">
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Phase 0: Decide ownership and vocabulary</h3>
+            <p>Update README/AGENTS only if the boundary changes. The current repo instructions say database loading belongs elsewhere; the cleaner architecture keeps it that way.</p>
+            <ul class="mt-3 list-disc space-y-1 pl-5">
+              <li>Rename local concept from <code>data_dir</code> to <code>work_dir</code> for scratch/cache.</li>
+              <li>Add <code>store_uri</code> for canonical data lake root.</li>
+              <li>Define dataset IDs: <code>nswgov.sales</code>, <code>rentboard.lodgements</code>, <code>abs.poa</code>, <code>abs.poa_columns</code>.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Phase 1: Add portable storage without rewriting sources</h3>
+            <p>Keep local extraction because ZIP and pandas workflows expect files. Publish raw and final artifacts to the storage backend after each stage.</p>
+            <ul class="mt-3 list-disc space-y-1 pl-5">
+              <li>Add <code>propertyiq_getdata/core/storage.py</code> wrapping fsspec/pyarrow.</li>
+              <li>Add <code>--store-uri</code> and <code>PROPERTYIQ_STORE_URI</code>; preserve <code>--data-dir</code> as local compatibility.</li>
+              <li>Replace rclone Drive scripts with backend-agnostic <code>publish</code> and <code>pull-cache</code> commands.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Phase 2: Make Parquet canonical</h3>
+            <p>Write normalized CSV and Parquet for one release, then flip Parquet to canonical and keep CSV under <code>exports/csv</code>.</p>
+            <ul class="mt-3 list-disc space-y-1 pl-5">
+              <li>Add <code>atomic_write_parquet</code> using local temp then backend put/copy.</li>
+              <li>Use Hive-style partitions matching current contract: <code>period=YYYYMMDD</code>, <code>year=YYYY/month=MM</code>, <code>census_year=YYYY</code>.</li>
+              <li>Pin schemas in tests and write a companion schema registry YAML/JSON per dataset.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Phase 3: Run serverlessly</h3>
+            <p>Package the CLI in a container. The same command runs locally, in GitHub Actions, or in cloud jobs.</p>
+            <ul class="mt-3 list-disc space-y-1 pl-5">
+              <li>Simple path: GitHub Actions schedule for weekly NSW/rentboard updates, manual ABS workflow.</li>
+              <li>Robust path: Prefect push work pool, Cloud Run Job, AWS ECS/Fargate task, or Azure Container Instance.</li>
+              <li>AWS-specific path: EventBridge + Step Functions + container tasks; query with Athena over S3.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card piq-card bg-base-100 lg:col-span-2">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Phase 4: Formalize the database loader contract</h3>
+            <p>The database project should load from the lake manifest, not from ad hoc local paths. That gives repeatability and lets the app/AI serving layer be rebuilt from a known lake snapshot.</p>
+            <div class="grid gap-3 md:grid-cols-3">
+              <div class="rounded-lg bg-base-200 p-4">
+                <div class="font-medium">Input</div>
+                <p class="piq-small mt-1">Dataset manifest rows with path, sha256, rows, schema version, period, object generation/version.</p>
+              </div>
+              <div class="rounded-lg bg-base-200 p-4">
+                <div class="font-medium">Load method</div>
+                <p class="piq-small mt-1">Stage table, validate counts/checksums, upsert or replace affected period, record <code>load_runs</code>.</p>
+              </div>
+              <div class="rounded-lg bg-base-200 p-4">
+                <div class="font-medium">Serving</div>
+                <p class="piq-small mt-1">Postgres/app DB for low-latency reads, joined entities, search indexes, embeddings, and agent tools.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="piq-section mt-8" id="serverless">
+      <h2 class="text-2xl font-semibold">Serverless Deployment Choices</h2>
+      <div class="mt-4 grid gap-4 lg:grid-cols-3">
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Local-first baseline</h3>
+            <p>Use <code>uv run propertyiq-getdata ... --store-uri file:///...</code> and DuckDB for inspection. Best for development and debugging source layout changes.</p>
+            <span class="badge badge-success badge-soft mt-2">Keep always</span>
+          </div>
+        </div>
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">GitHub Actions</h3>
+            <p>Good first automation for scheduled updates and tests. Not ideal as the permanent data plane if runs become long, secrets are sensitive, or object-store permissions get complex.</p>
+            <span class="badge badge-info badge-soft mt-2">Fastest to implement</span>
+          </div>
+        </div>
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Cloud container job</h3>
+            <p>Best production shape: Cloud Run Jobs, AWS ECS/Fargate, Azure Container Instances, or Prefect serverless push pools. Container reads config, writes lake, emits manifest.</p>
+            <span class="badge badge-primary badge-soft mt-2">Recommended production</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="piq-section mt-8" id="code">
+      <h2 class="text-2xl font-semibold">Concrete Code Changes</h2>
+      <div class="mt-4 grid gap-4 lg:grid-cols-2">
+        <div class="mockup-code bg-neutral text-neutral-content">
+          <pre data-prefix="1"><code>propertyiq_getdata/core/storage.py</code></pre>
+          <pre data-prefix="2"><code>propertyiq_getdata/core/lake.py</code></pre>
+          <pre data-prefix="3"><code>propertyiq_getdata/core/formats.py</code></pre>
+          <pre data-prefix="4"><code>propertyiq_getdata/core/run_ledger.py</code></pre>
+          <pre data-prefix="5"><code>tests/test_storage_backends.py</code></pre>
+        </div>
+        <div class="rounded-lg border border-base-content/10 bg-base-100 p-4">
+          <h3 class="font-semibold">Suggested dependencies</h3>
+          <div class="mt-3 piq-code rounded-lg bg-base-200 p-4">uv add pyarrow fsspec duckdb
+uv add --optional s3 s3fs
+uv add --optional gcs gcsfs
+uv add --optional azure adlfs
+
+# Later only if needed:
+uv add pyiceberg
+# or, if Databricks/Azure Delta becomes the target:
+uv add deltalake</div>
+          <p class="piq-small mt-3 opacity-80">Keep cloud backend packages optional so local installs stay lean.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="piq-section mt-8" id="risks">
+      <h2 class="text-2xl font-semibold">Risks And Controls</h2>
+      <div class="mt-4 overflow-x-auto rounded-lg border border-base-content/10 bg-base-100">
+        <table class="table table-zebra">
+          <thead>
+            <tr>
+              <th>Risk</th>
+              <th>Control</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Partial writes to object storage are not the same as POSIX atomic replace.</td>
+              <td>Write to run-scoped temporary keys, validate checksum/row counts, then publish a manifest pointer as the commit record. Use Iceberg later if transactional table commits become necessary.</td>
+            </tr>
+            <tr>
+              <td>CSV-to-Parquet migration can break downstream loaders.</td>
+              <td>Dual-write for one release; keep CSV export command; version schemas and update database project loader to read manifests.</td>
+            </tr>
+            <tr>
+              <td>ABS wide output can stress memory and file size.</td>
+              <td>Use pyarrow/DuckDB for conversion; keep one census-year partition but consider row-group sizing and compression. Do not force the wide ABS table into the app database unless needed.</td>
+            </tr>
+            <tr>
+              <td>Cloud choice can lock in orchestration and query engine.</td>
+              <td>Use object-store URI abstraction and open formats first. Keep provider-specific services at the edges.</td>
+            </tr>
+            <tr>
+              <td>Raw data retention can grow indefinitely.</td>
+              <td>Lifecycle policies: retain Bronze indefinitely or archive after one year; expire Stage after 30-90 days; keep Silver and manifests as canonical historical record.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="piq-section mt-8" id="decisions">
+      <h2 class="text-2xl font-semibold">Decisions To Make Before Coding</h2>
+      <div class="mt-4 grid gap-4 md:grid-cols-2">
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Cloud target</h3>
+            <p>If you already have a preferred cloud, use its object store. If not, start with local filesystem plus S3-compatible MinIO for dev and S3 for production.</p>
+          </div>
+        </div>
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Canonical table format</h3>
+            <p>Start with Parquet + manifests. Add Iceberg when you need SQL table commits, schema evolution, time travel, or multi-engine concurrency.</p>
+          </div>
+        </div>
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">Repository boundary</h3>
+            <p>Either keep DB loading in the database project, or explicitly change this repo's charter. The current repo contract says collection only.</p>
+          </div>
+        </div>
+        <div class="card piq-card bg-base-100">
+          <div class="card-body">
+            <h3 class="card-title text-lg">AI-agent serving</h3>
+            <p>Use the serving DB/vector index for low-latency agent tools. Use the lake for provenance, backfills, analytics, and rebuilds.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="piq-section mt-8 mb-10" id="research">
+      <h2 class="text-2xl font-semibold">Research Basis</h2>
+      <div class="mt-4 grid gap-3 md:grid-cols-2">
+        <a class="link link-primary" href="https://docs.aws.amazon.com/prescriptive-guidance/latest/defining-bucket-names-data-lakes/data-layer-definitions.html">AWS recommended data lake layers: raw, stage, analytics; keep original raw format and enable versioning</a>
+        <a class="link link-primary" href="https://parquet.apache.org/">Apache Parquet: column-oriented format for efficient storage and retrieval</a>
+        <a class="link link-primary" href="https://filesystem-spec.readthedocs.io/en/latest/api.html">fsspec: generic filesystem API over local and remote storage</a>
+        <a class="link link-primary" href="https://arrow.apache.org/docs/python/filesystems.html">PyArrow filesystems: native S3 and GCS support</a>
+        <a class="link link-primary" href="https://duckdb.org/docs/lts/data/partitioning/hive_partitioning">DuckDB: Hive partitioned Parquet datasets</a>
+        <a class="link link-primary" href="https://iceberg.apache.org/spec/">Apache Iceberg spec: metadata files, snapshots, optimistic concurrency</a>
+        <a class="link link-primary" href="https://docs.aws.amazon.com/athena/latest/ug/querying-iceberg.html">Amazon Athena: querying Iceberg tables on S3</a>
+        <a class="link link-primary" href="https://docs.delta.io/">Delta Lake: ACID transactions and scalable metadata on data lakes</a>
+        <a class="link link-primary" href="https://docs.cloud.google.com/bigquery/docs/loading-data-cloud-storage-parquet">BigQuery: loading Parquet from Cloud Storage</a>
+        <a class="link link-primary" href="https://learn.microsoft.com/en-us/azure/synapse-analytics/sql/on-demand-workspace-overview">Azure Synapse serverless SQL: query Parquet/Delta/CSV in data lake</a>
+        <a class="link link-primary" href="https://docs.lakefs.io/">lakeFS: Git-like versioning over object storage, optional later</a>
+        <a class="link link-primary" href="https://docs.prefect.io/v3/how-to-guides/deployment_infra/serverless">Prefect push work pools: serverless flow runs without a worker</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

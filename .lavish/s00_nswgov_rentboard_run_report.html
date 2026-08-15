@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en" data-theme="business">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NSW Sales + Rent Run Report — 2026-08-05</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      securityLevel: "strict",
+      themeVariables: {
+        primaryColor: "#d9e7ff",
+        primaryTextColor: "#101828",
+        primaryBorderColor: "#6287c7",
+        lineColor: "#64748b",
+        secondaryColor: "#f0f9ff",
+        tertiaryColor: "#fff7ed"
+      }
+    });
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :where(.grid, .flex) > * { min-width: 0; }
+    :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, td, th, .badge, .label) { overflow-wrap: anywhere; }
+    :where(img, svg, video, canvas, iframe) { max-width: 100%; height: auto; }
+    html { scroll-behavior: smooth; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .section-anchor { scroll-margin-top: 6rem; }
+    .verdict-card { border-left: 4px solid color-mix(in oklab, var(--color-primary) 72%, white); }
+    .verdict-ok { border-left-color: var(--color-success); }
+    .verdict-bad { border-left-color: var(--color-error); }
+    .mermaid-wrap { background: var(--color-base-100); border: 1px solid color-mix(in oklab, var(--color-base-content) 14%, transparent); }
+    .num { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+  </style>
+</head>
+<body class="bg-base-200 text-base-content">
+
+<div class="navbar sticky top-0 z-10 bg-base-100/95 backdrop-blur border-b border-base-content/10">
+  <div class="navbar-start min-w-0">
+    <div class="px-3 min-w-0">
+      <p class="text-xs uppercase tracking-wide opacity-70">propertyiq_getdata · run 2026-08-05</p>
+      <h1 class="text-lg sm:text-xl font-semibold truncate">NSW Sales + Rent — Pre vs Post Run</h1>
+    </div>
+  </div>
+  <div class="navbar-end hidden lg:flex">
+    <ul class="menu menu-horizontal text-sm">
+      <li><a href="#verdict">Verdict</a></li>
+      <li><a href="#delta">Delta</a></li>
+      <li><a href="#additive">Additive proof</a></li>
+      <li><a href="#nswgov">nswgov block</a></li>
+      <li><a href="#dataqa">data-qa-agent</a></li>
+    </ul>
+  </div>
+</div>
+
+<main class="mx-auto max-w-6xl px-4 py-8 space-y-10">
+
+  <!-- ============ VERDICT ============ -->
+  <section id="verdict" class="section-anchor space-y-4">
+    <h2 class="text-2xl font-semibold">Verdict</h2>
+    <div class="grid gap-4 md:grid-cols-2">
+      <div class="card card-border bg-base-100 verdict-card verdict-ok">
+        <div class="card-body gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="badge badge-success badge-soft">SUCCEEDED</span>
+            <h3 class="card-title text-base">rentboard — NSW rental bond lodgements</h3>
+          </div>
+          <p class="text-sm opacity-90">Added <strong>June 2026</strong> — one new partition, <strong class="num">+25,492</strong> rows.
+          Every pre-existing partition is <strong>byte-identical</strong>. Purely additive, exactly as designed.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100 verdict-card verdict-bad">
+        <div class="card-body gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="badge badge-error badge-soft">BLOCKED UPSTREAM</span>
+            <h3 class="card-title text-base">nswgov — NSW Valuer General sales</h3>
+          </div>
+          <p class="text-sm opacity-90">Crashed with <span class="mono text-xs">TooManyRedirects</span>. The NSW VG
+          "Property sales information" app is <strong>down at the source</strong> — verified in a real Chrome browser, not just the scraper.
+          <strong>Zero rows written</strong>; no data was corrupted.</p>
+        </div>
+      </div>
+    </div>
+
+    <div role="alert" class="alert alert-success alert-soft">
+      <span><strong>Your core question — "does it mostly add new volume?" — answered: yes, entirely.</strong>
+      Of 867 pre-existing partitions, <strong>867 are unchanged (SHA-256 identical)</strong>, 0 modified, 0 removed, 1 added.
+      This run was 100% additive, not 99%.</span>
+    </div>
+  </section>
+
+  <!-- ============ DELTA ============ -->
+  <section id="delta" class="section-anchor space-y-4">
+    <h2 class="text-2xl font-semibold">Pre vs post</h2>
+    <p class="text-sm opacity-80 max-w-3xl">Snapshots taken immediately before and after the run over
+      <span class="mono text-xs">data/normalized/**</span> and <span class="mono text-xs">data/manifests/*</span>,
+      hashing every partition file.</p>
+
+    <div class="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-100">
+      <div class="stat">
+        <div class="stat-title">Partitions</div>
+        <div class="stat-value text-2xl num">867 → 868</div>
+        <div class="stat-desc text-success">+1 new</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Total rows</div>
+        <div class="stat-value text-2xl num">6,395,352 → 6,420,844</div>
+        <div class="stat-desc text-success">+25,492 (+0.40%)</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Existing files touched</div>
+        <div class="stat-value text-2xl num">0</div>
+        <div class="stat-desc">0 modified · 0 removed</div>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-zebra table-sm">
+        <thead>
+          <tr>
+            <th>Dataset</th>
+            <th class="text-right">Partitions before</th>
+            <th class="text-right">Partitions after</th>
+            <th class="text-right">Rows before</th>
+            <th class="text-right">Rows after</th>
+            <th class="text-right">Δ rows</th>
+            <th>Latest period</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>nswgov</strong> sales<br><span class="text-xs opacity-70 mono">normalized/nswgov/sales/</span></td>
+            <td class="text-right num">754</td>
+            <td class="text-right num">754</td>
+            <td class="text-right num">3,089,682</td>
+            <td class="text-right num">3,089,682</td>
+            <td class="text-right num opacity-60">0</td>
+            <td class="mono text-xs">2026-06-29 → 2026-06-29 <span class="badge badge-error badge-xs badge-soft ml-1">stalled</span></td>
+          </tr>
+          <tr>
+            <td><strong>rentboard</strong> lodgements<br><span class="text-xs opacity-70 mono">normalized/rentboard/lodgements/</span></td>
+            <td class="text-right num">113</td>
+            <td class="text-right num">114</td>
+            <td class="text-right num">3,305,670</td>
+            <td class="text-right num">3,331,162</td>
+            <td class="text-right num text-success font-semibold">+25,492</td>
+            <td class="mono text-xs">2026-05-01 → 2026-06-01 <span class="badge badge-success badge-xs badge-soft ml-1">advanced</span></td>
+          </tr>
+          <tr class="font-semibold">
+            <td>Total</td>
+            <td class="text-right num">867</td>
+            <td class="text-right num">868</td>
+            <td class="text-right num">6,395,352</td>
+            <td class="text-right num">6,420,844</td>
+            <td class="text-right num text-success">+25,492</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ ADDITIVE PROOF ============ -->
+  <section id="additive" class="section-anchor space-y-4">
+    <h2 class="text-2xl font-semibold">Additive-integrity check</h2>
+    <p class="text-sm opacity-80 max-w-3xl">Every partition file was SHA-256 hashed before and after. The question
+      "did the run rewrite history?" is answered by the middle two rows being zero.</p>
+
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm">
+        <thead><tr><th>Outcome</th><th class="text-right">Files</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr class="bg-success/5">
+            <td><span class="badge badge-success badge-soft badge-sm">Added</span></td>
+            <td class="text-right num font-semibold">1</td>
+            <td class="mono text-xs">normalized/rentboard/lodgements/year=2026/month=06.csv — 25,492 rows, 615,897 bytes</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-warning badge-soft badge-sm">Modified</span></td>
+            <td class="text-right num font-semibold">0</td>
+            <td class="text-sm opacity-70">No existing partition changed hash — no silent restatement of history.</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-error badge-soft badge-sm">Removed</span></td>
+            <td class="text-right num font-semibold">0</td>
+            <td class="text-sm opacity-70">Nothing dropped.</td>
+          </tr>
+          <tr class="bg-base-200/50">
+            <td><span class="badge badge-ghost badge-sm">Unchanged</span></td>
+            <td class="text-right num font-semibold">867</td>
+            <td class="text-sm opacity-70">100% of the prior corpus, bit-for-bit.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card card-border bg-base-100">
+      <div class="card-body gap-3">
+        <h3 class="card-title text-base">Manifest deltas</h3>
+        <div class="overflow-x-auto">
+          <table class="table table-xs">
+            <thead><tr><th>Manifest</th><th class="text-right">Entries</th><th class="text-right">Rows</th><th>New periods</th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="mono text-xs">nswgov_sales_manifest.csv</td>
+                <td class="text-right num">754 → 754</td>
+                <td class="text-right num">3,089,682 → 3,089,682</td>
+                <td class="opacity-60 text-xs">none</td>
+              </tr>
+              <tr>
+                <td class="mono text-xs">rentboard_lodgements_manifest.csv</td>
+                <td class="text-right num">113 → 114</td>
+                <td class="text-right num">3,305,670 → 3,331,162</td>
+                <td class="mono text-xs text-success">2026-06-01</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs opacity-70">The rentboard run also re-checked <strong>May 2026</strong> and correctly wrote
+          <strong>0 rows / 0 partitions</strong> for it — the idempotency guard working as documented in AGENTS.md.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ NSWGOV FAILURE ============ -->
+  <section id="nswgov" class="section-anchor space-y-4">
+    <h2 class="text-2xl font-semibold">Why nswgov produced nothing</h2>
+    <div role="alert" class="alert alert-warning alert-soft">
+      <span>This is <strong>not a scraper bug and not a code change you need to make</strong>. The upstream NSW
+      Valuer General application is returning "currently unavailable" to everyone, including a real logged-out Chrome browser.</span>
+    </div>
+
+    <div class="mermaid-wrap rounded-box p-4 overflow-x-auto">
+      <pre class="mermaid">
+flowchart TD
+  A["pull_nswgov → fetch_links()"] --> B["GET valuation.property.nsw.gov.au<br/>/embed/propertySalesInformation"]
+  B --> C{"HTTP 302"}
+  C -->|"redirects to site root,<br/>root bounces back"| D["requests: TooManyRedirects<br/>(30 hops) — CRASH"]
+  C -->|"curl / Chrome with cookie jar"| E["200 OK at portal root"]
+  E --> F["Page banner:<br/>'Sorry, the application you requested<br/>is currently unavailable'"]
+  F --> G["0 .zip links on page<br/>→ nothing to download"]
+  H["Separately: file host<br/>www.valuergeneral.nsw.gov.au"] --> I["403 + Cloudflare<br/>'Just a moment…' challenge"]
+  style D fill:#fee2e2,stroke:#dc2626
+  style F fill:#fef3c7,stroke:#d97706
+  style I fill:#fef3c7,stroke:#d97706
+      </pre>
+    </div>
+
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm table-zebra">
+        <thead><tr><th>Probe</th><th>Result</th><th>Reads as</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono text-xs">requests → /embed/propertySalesInformation</td>
+            <td><span class="badge badge-error badge-soft badge-sm">TooManyRedirects</span></td>
+            <td class="text-sm">Redirect loop; no cookie persistence across the bounce</td>
+          </tr>
+          <tr>
+            <td class="mono text-xs">curl -L (cookie jar) → same URL</td>
+            <td><span class="badge badge-warning badge-soft badge-sm">200, lands on <span class="mono">/</span></span></td>
+            <td class="text-sm">App redirects to portal root — <strong>0 zip links</strong></td>
+          </tr>
+          <tr>
+            <td class="mono text-xs">curl -L → /launch/propertySalesInformation</td>
+            <td><span class="badge badge-warning badge-soft badge-sm">200, lands on <span class="mono">/</span></span></td>
+            <td class="text-sm">Same bounce — not just a moved path</td>
+          </tr>
+          <tr class="bg-primary/5">
+            <td class="mono text-xs">Real Chrome browser → same URL</td>
+            <td><span class="badge badge-error badge-soft badge-sm">"application currently unavailable"</span></td>
+            <td class="text-sm"><strong>Decisive: genuine upstream outage, not bot-blocking</strong></td>
+          </tr>
+          <tr>
+            <td class="mono text-xs">GET www.valuergeneral.nsw.gov.au/__psi/weekly/*.zip</td>
+            <td><span class="badge badge-warning badge-soft badge-sm">403 Cloudflare</span></td>
+            <td class="text-sm">File host now sits behind a JS/cookie challenge — a <em>second</em>, latent problem</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid gap-4 md:grid-cols-3">
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-1">
+          <h4 class="font-semibold text-sm">1 · Wait and re-run</h4>
+          <p class="text-xs opacity-80">Most likely resolution. The banner is the portal's own maintenance/outage message.
+            Sales data is only ~5 weeks behind (last period 2026-06-29).</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-1">
+          <h4 class="font-semibold text-sm">2 · Fail loudly, not with a stack trace</h4>
+          <p class="text-xs opacity-80">Worth a small change: <span class="mono text-xs">fetch_links</span> should catch
+            the redirect loop / empty link set and raise the same clear
+            "<span class="mono text-xs">source unavailable — investigate</span>" signal the zero-row guards use.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-1">
+          <h4 class="font-semibold text-sm">3 · Cloudflare on the file host</h4>
+          <p class="text-xs opacity-80">Even once the listing returns, <span class="mono text-xs">session.get(href)</span>
+            may hit the 403 challenge. Plan for a browser-session or cookie-bearing fetch before the next weekly run.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DATA-QA-AGENT ============ -->
+  <section id="dataqa" class="section-anchor space-y-4">
+    <h2 class="text-2xl font-semibold">How this data reaches <span class="mono text-xl">data-qa-agent</span></h2>
+    <p class="text-sm opacity-80 max-w-3xl">The sibling project does <strong>not</strong> read the partitioned outputs.
+      It reads the two <em>legacy monolith CSVs</em> — which propertyiq_getdata only produces on demand via
+      <span class="mono text-xs">export-legacy</span>. That is the seam, and it is currently stale.</p>
+
+    <div class="mermaid-wrap rounded-box p-4 overflow-x-auto">
+      <pre class="mermaid">
+flowchart LR
+  subgraph P["propertyiq_getdata"]
+    A["normalized/nswgov/sales/period=*.csv<br/>normalized/rentboard/.../month=*.csv"]
+    B["export-legacy"]
+    C["data/nswgov_df.csv (613 MB)<br/>data/rentboard_df.csv (79 MB)"]
+    A --> B --> C
+  end
+  subgraph Q["data-qa-agent"]
+    D["data/nswgov_df.csv<br/>data/rentboard_df.csv<br/>(gitignored)"]
+    E["make samples<br/>→ data/samples/*.csv (committed)"]
+    F["dlt ingest.py<br/>PIPELINE_SOURCE=sample | full"]
+    G["raw.property_sales<br/>raw.property_rent"]
+    H["dbt: staging → marts<br/>property_sales · property_rent · property_yield"]
+    I["data-agent NL→SQL<br/>under Postgres RLS"]
+    D --> E
+    D --> F
+    E --> F
+    F --> G --> H --> I
+  end
+  C -.->|"manual copy — no script"| D
+  C -.->|"cloud: upload to S3<br/>DATA_S3_BUCKET"| J["s3://data-qa-source-data-*"]
+  J --> F
+  style C fill:#fef3c7,stroke:#d97706
+  style D fill:#fee2e2,stroke:#dc2626
+      </pre>
+    </div>
+
+    <div class="grid gap-4 lg:grid-cols-2">
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-3">
+          <h3 class="card-title text-base">Local refresh runbook</h3>
+          <ol class="list-decimal ml-5 text-sm space-y-2">
+            <li>In <span class="mono text-xs">propertyiq_getdata</span>:
+              <div class="mockup-code text-xs mt-1"><pre data-prefix="$"><code>uv run propertyiq-getdata rentboard export-legacy --data-dir data</code></pre><pre data-prefix="$"><code>uv run propertyiq-getdata nswgov export-legacy --data-dir data</code></pre></div>
+            </li>
+            <li>Copy both CSVs into <span class="mono text-xs">data-qa-agent/data/</span> (gitignored).</li>
+            <li>Regenerate the committed samples so CI + <span class="mono text-xs">make up</span> stay fast:
+              <div class="mockup-code text-xs mt-1"><pre data-prefix="$"><code>make samples</code></pre></div>
+            </li>
+            <li>Rebuild raw → staging → marts against the <em>full</em> files:
+              <div class="mockup-code text-xs mt-1"><pre data-prefix="$"><code>make pipeline-full   # PIPELINE_SOURCE=full</code></pre></div>
+              <span class="text-xs opacity-70">Plain <span class="mono">make pipeline</span> uses the small samples — it will
+              <em>not</em> pick up new volume.</span>
+            </li>
+            <li>Verify end to end: <span class="mono text-xs">make smoke</span></li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="card card-border bg-base-100">
+        <div class="card-body gap-3">
+          <h3 class="card-title text-base">Cloud (AWS) refresh</h3>
+          <ol class="list-decimal ml-5 text-sm space-y-2">
+            <li>Upload the two CSVs to the source-data bucket
+              (<span class="mono text-xs">DATA_S3_BUCKET</span>, wired in
+              <span class="mono text-xs">infra/terraform/foundations/ecs.tf</span>).
+              <span class="badge badge-warning badge-soft badge-xs">no script exists</span></li>
+            <li>Authenticate: <span class="mono text-xs">aws sso login --profile data-qa</span></li>
+            <li>Run the one-shot ECS Fargate job:
+              <div class="mockup-code text-xs mt-1"><pre data-prefix="$"><code>./scripts/run_job.sh pipeline</code></pre></div>
+              <span class="text-xs opacity-70">dlt streams each object straight from S3 — no 580 MB local download.</span>
+            </li>
+            <li>Smoke the deployed stack: <span class="mono text-xs">./scripts/cloud_smoke.sh</span></li>
+          </ol>
+          <div class="divider my-1"></div>
+          <p class="text-xs opacity-80">Dataset registry + RLS grants live in
+            <span class="mono text-xs">config/datasets.yaml</span>; the seed's source of truth is Alembic migration
+            <span class="mono text-xs">0002_property_market</span>.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="text-lg font-semibold mt-2">Staleness right now</h3>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm table-zebra">
+        <thead><tr><th>File</th><th class="text-right">Bytes</th><th>propertyiq_getdata</th><th>data-qa-agent</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono text-xs">nswgov_df.csv</td>
+            <td class="text-right num">613,648,628</td>
+            <td class="num text-xs">Jul 1 23:57</td>
+            <td class="num text-xs">Jul 3 09:17</td>
+            <td><span class="badge badge-ghost badge-sm">in sync</span><br><span class="text-xs opacity-70">no new sales to export anyway</span></td>
+          </tr>
+          <tr class="bg-warning/5">
+            <td class="mono text-xs">rentboard_df.csv</td>
+            <td class="text-right num">79,409,335</td>
+            <td class="num text-xs">Jul 3 09:24</td>
+            <td class="num text-xs">Jul 3 09:17</td>
+            <td><span class="badge badge-warning badge-soft badge-sm">stale</span><br><span class="text-xs opacity-70">predates the June 2026 partition just added</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div role="alert" class="alert alert-info alert-soft">
+      <span><strong>Gap worth naming:</strong> the hop from <span class="mono text-xs">propertyiq_getdata/data/*_df.csv</span>
+      to <span class="mono text-xs">data-qa-agent/data/</span> (and to S3) is a <strong>manual copy</strong> — there is no
+      script on either side that does it. <span class="mono text-xs">propertyiq_getdata/scripts/update_data_and_push.sh</span>
+      runs the pipeline then pushes to Google Drive via rclone; it never calls <span class="mono text-xs">export-legacy</span>
+      and never touches data-qa-agent. Every refresh depends on remembering all four steps in the right order.</span>
+    </div>
+  </section>
+
+  <!-- ============ NEXT ============ -->
+  <section class="section-anchor space-y-3">
+    <h2 class="text-2xl font-semibold">Suggested next actions</h2>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-sm">
+        <thead><tr><th>Priority</th><th>Action</th><th>Where</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge-error badge-soft badge-sm">Now</span></td>
+            <td>Re-run <span class="mono text-xs">nswgov update</span> in a day or two once the VG portal is back up.</td>
+            <td class="mono text-xs">propertyiq_getdata</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-warning badge-soft badge-sm">Soon</span></td>
+            <td>Export rentboard to <span class="mono text-xs">rentboard_df.csv</span> and refresh data-qa-agent so June 2026 is queryable.</td>
+            <td class="mono text-xs">both</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-warning badge-soft badge-sm">Soon</span></td>
+            <td>Make <span class="mono text-xs">fetch_links</span> raise a clear "source unavailable" error instead of a raw <span class="mono text-xs">TooManyRedirects</span> traceback.</td>
+            <td class="mono text-xs">sources/nswgov.py</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-info badge-soft badge-sm">Consider</span></td>
+            <td>Add a single <span class="mono text-xs">scripts/sync_to_data_qa.sh</span> that does export-legacy → copy → samples → pipeline-full, closing the manual seam.</td>
+            <td class="mono text-xs">propertyiq_getdata</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-info badge-soft badge-sm">Consider</span></td>
+            <td>Prepare for the Cloudflare challenge on the <span class="mono text-xs">__psi</span> file host before it blocks a working listing.</td>
+            <td class="mono text-xs">sources/nswgov.py</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="pt-6 pb-10 text-xs opacity-60">
+    Run executed 2026-08-05 · snapshots hashed with SHA-256 over every partition file ·
+    no writes were made to <span class="mono">data-qa-agent</span>.
+  </footer>
+</main>
+</body>
+</html>

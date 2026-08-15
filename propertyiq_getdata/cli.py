@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 from .audit import print_audit
+from .sinks.databricks import DEFAULT_VOLUME_ROOT, publish_databricks
 from .sources.nswgov import (
     export_legacy_nswgov,
     extract_nswgov,
@@ -52,6 +53,18 @@ def build_parser() -> argparse.ArgumentParser:
     rentboard_sub.add_parser("manifest", parents=[data_parent], help="Rebuild the rentboard partition manifest.")
     rentboard_sub.add_parser("migrate-legacy", parents=[data_parent], help="Split the old rentboard_df.csv into monthly partitions.")
     rentboard_sub.add_parser("export-legacy", parents=[data_parent], help="Stack rentboard partitions into the old rentboard_df.csv shape.")
+
+    publish = subparsers.add_parser("publish", parents=[data_parent], help="Publish partitions to an external target.")
+    publish_sub = publish.add_subparsers(dest="target", required=True)
+    publish_databricks_parser = publish_sub.add_parser(
+        "databricks",
+        parents=[data_parent],
+        help="Upload new or changed partitions to a Unity Catalog volume as Parquet.",
+    )
+    publish_databricks_parser.add_argument("--dataset", choices=["nswgov", "rentboard", "all"], default="all")
+    publish_databricks_parser.add_argument("--profile", default="DEFAULT", help="~/.databrickscfg profile name.")
+    publish_databricks_parser.add_argument("--volume-root", default=DEFAULT_VOLUME_ROOT)
+    publish_databricks_parser.add_argument("--dry-run", action="store_true", help="Print the plan, upload nothing.")
     return parser
 
 
@@ -102,5 +115,17 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.stage == "export-legacy":
             print(export_legacy_rentboard(data_dir=args.data_dir).to_string(index=False))
+            return 0
+    if args.command == "publish":
+        if args.target == "databricks":
+            datasets = ("nswgov", "rentboard") if args.dataset == "all" else (args.dataset,)
+            report = publish_databricks(
+                data_dir=args.data_dir,
+                volume_root=args.volume_root,
+                profile=args.profile,
+                datasets=datasets,
+                dry_run=args.dry_run,
+            )
+            print(report.summary())
             return 0
     raise RuntimeError(f"Unhandled command: {args}")
