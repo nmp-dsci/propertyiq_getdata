@@ -60,7 +60,6 @@ def make_session() -> requests.Session:
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/126.0 Safari/537.36"
             ),
-            "Referer": SOURCE_URL,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
     )
@@ -265,7 +264,12 @@ def pull_nswgov(
             payload_dir.parent.mkdir(parents=True, exist_ok=True)
             zip_path = payload_dir.with_suffix(".zip")
             print(f"Downloading {record['term']} {record['period']}: {record['href']}")
-            response = session.get(record["href"], timeout=120)
+            # Referer belongs on the file download — it is the page the link
+            # came from — but NOT on the session, because sending it while
+            # fetching that same page makes the site redirect to itself forever.
+            response = session.get(
+                record["href"], timeout=120, headers={"Referer": SOURCE_URL}
+            )
             response.raise_for_status()
             zip_path.write_bytes(response.content)
             _safe_extract(zip_path, payload_dir)
