@@ -23,6 +23,7 @@ from typing import Protocol
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+from databricks.sdk.errors import AlreadyExists, NotFound, ResourceAlreadyExists
 
 from ..core.paths import get_paths
 from ..sources.nswgov import FINAL_COLUMNS as NSWGOV_COLUMNS
@@ -270,13 +271,11 @@ class VolumeSink:
 
 
 def _is_not_found(error: Exception) -> bool:
-    text = f"{type(error).__name__} {error}".lower()
-    return "notfound" in text or "not found" in text or "does not exist" in text
+    return isinstance(error, NotFound)
 
 
 def _is_already_exists(error: Exception) -> bool:
-    text = f"{type(error).__name__} {error}".lower()
-    return "alreadyexists" in text or "already exists" in text
+    return isinstance(error, (AlreadyExists, ResourceAlreadyExists))
 
 
 def publish_databricks(

@@ -7,11 +7,13 @@ from pathlib import Path
 import pandas as pd
 import pyarrow.parquet as pq
 import pytest
+from databricks.sdk.errors import NotFound, PermissionDenied, ResourceAlreadyExists
 
 from propertyiq_getdata.core.manifest import write_manifest
 from propertyiq_getdata.sinks.databricks import (
     DATASETS,
     SchemaDriftError,
+    VolumeSink,
     csv_to_parquet,
     landing_dir,
     plan_publish,
@@ -351,3 +353,67 @@ def test_missing_manifest_raises_a_helpful_error(tmp_path):
 def test_dataset_specs_track_the_pinned_column_contracts():
     assert DATASETS["nswgov"].columns == list(SALES_COLUMNS)
     assert DATASETS["rentboard"].columns == list(RENT_COLUMNS)
+
+
+class _FakeFilesApi:
+    """Stands in for WorkspaceClient().files; raises typed SDK errors, no network."""
+
+    def __init__(self, *, list_error=None, upload_error=None, remote_size=None):
+        self._list_error = list_error
+        self._upload_error = upload_error
+        self._remote_size = remote_size
+
+    def list_directory_contents(self, directory):
+        raise self._list_error
+
+    def upload(self, remote, handle, overwrite=False):
+        raise self._upload_error
+
+    def get_metadata(self, remote):
+        class _Metadata:
+            content_length = self._remote_size
+
+        return _Metadata()
+
+
+def _volume_sink_with_fake_client(files_api) -> VolumeSink:
+    sink = VolumeSink.__new__(VolumeSink)
+
+    class _FakeClient:
+        files = files_api
+
+    sink._client = _FakeClient()
+    return sink
+
+
+def test_list_names_treats_typed_not_found_as_empty():
+    sink = _volume_sink_with_fake_client(_FakeFilesApi(list_error=NotFound("no such directory")))
+    assert sink.list_names("/Volumes/workspace/propertyiq/propertyiq/landing/sales") == set()
+
+
+def test_list_names_reraises_unrelated_typed_errors():
+    sink = _volume_sink_with_fake_client(_FakeFilesApi(list_error=PermissionDenied("nope")))
+    with pytest.raises(PermissionDenied):
+        sink.list_names("/Volumes/workspace/propertyiq/propertyiq/landing/sales")
+
+
+def test_upload_treats_matching_size_already_exists_as_success(tmp_path):
+    local = tmp_path / "period=20260629_ab12cd34.parquet"
+    local.write_bytes(b"12345")
+    sink = _volume_sink_with_fake_client(
+        _FakeFilesApi(
+            upload_error=ResourceAlreadyExists("already there"),
+            remote_size=len(local.read_bytes()),
+        )
+    )
+    sink.upload(local, "/Volumes/workspace/propertyiq/propertyiq/landing/sales/x.parquet")
+
+
+def test_upload_raises_on_size_mismatch_already_exists(tmp_path):
+    local = tmp_path / "period=20260629_ab12cd34.parquet"
+    local.write_bytes(b"12345")
+    sink = _volume_sink_with_fake_client(
+        _FakeFilesApi(upload_error=ResourceAlreadyExists("already there"), remote_size=1)
+    )
+    with pytest.raises(RuntimeError, match="refusing to guess"):
+        sink.upload(local, "/Volumes/workspace/propertyiq/propertyiq/landing/sales/x.parquet")
