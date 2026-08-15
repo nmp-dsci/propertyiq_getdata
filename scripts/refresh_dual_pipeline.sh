@@ -12,6 +12,13 @@
 # upstream data scrapes nothing, rewrites the same CSVs, and uploads zero
 # Parquet files.
 #
+# Publishing is what starts the Databricks job -- the medallion job carries a
+# file-arrival trigger on landing/, so it launches itself about a minute after
+# the last file lands (and at most once every five minutes). Nothing here needs
+# to run it, and on a loop that means unattended job runs, and therefore
+# unattended compute, whenever there is genuinely new upstream data. Only a
+# change to the pipeline *code* needs a deploy (`make ship` in that repo).
+#
 #   scripts/refresh_dual_pipeline.sh              # full cycle
 #   scripts/refresh_dual_pipeline.sh --dry-run    # show what would happen
 #   scripts/refresh_dual_pipeline.sh --skip-scrape  # republish existing data only
@@ -74,7 +81,18 @@ run uv run python -m propertyiq_getdata rentboard export-legacy
 
 # ---------------------------------------------------------------------------
 # 4. Parquet consumer: upload only the partitions the volume does not hold.
+#    Counted before and after, because landing/ carries a file-arrival trigger:
+#    an upload here is what starts the Databricks job, so whether anything
+#    landed decides what to tell the operator at the end.
 # ---------------------------------------------------------------------------
+landing_count() {
+  databricks fs ls "dbfs:/Volumes/workspace/propertyiq/propertyiq/landing/$1" \
+    --profile "$PROFILE" 2>/dev/null | wc -l | tr -d ' '
+}
+
+sales_before=$(landing_count sales)
+rent_before=$(landing_count lodgements)
+
 run uv run python -m propertyiq_getdata publish databricks --profile "$PROFILE"
 
 # ---------------------------------------------------------------------------
@@ -84,8 +102,8 @@ run uv run python -m propertyiq_getdata audit
 
 echo
 echo "==> landing file counts vs manifest counts"
-sales_remote=$(databricks fs ls "dbfs:/Volumes/workspace/propertyiq/propertyiq/landing/sales" --profile "$PROFILE" | wc -l | tr -d ' ')
-rent_remote=$(databricks fs ls "dbfs:/Volumes/workspace/propertyiq/propertyiq/landing/lodgements" --profile "$PROFILE" | wc -l | tr -d ' ')
+sales_remote=$(landing_count sales)
+rent_remote=$(landing_count lodgements)
 sales_local=$(($(wc -l < data/manifests/nswgov_sales_manifest.csv) - 1))
 rent_local=$(($(wc -l < data/manifests/rentboard_lodgements_manifest.csv) - 1))
 
@@ -100,5 +118,18 @@ if (( sales_remote < sales_local || rent_remote < rent_local )); then
 fi
 
 echo
-echo "cycle complete. Next: run the Databricks job and the gold parity check —"
-echo "  (cd ../databricks-propertyiq && make ship && uv run python scripts/parity_check.py --profile $PROFILE)"
+if (( sales_remote > sales_before || rent_remote > rent_before )); then
+  # The medallion job carries a file-arrival trigger on landing/, so publishing
+  # is the trigger — nothing needs to be launched by hand. It waits 60s after
+  # the last file lands and runs at most once every 5 minutes.
+  echo "cycle complete — new files landed, so the Databricks job will start itself"
+  echo "in about a minute (file-arrival trigger on landing/)."
+  echo
+  echo "Once it finishes, check gold against the dbt reference:"
+  echo "  (cd ../databricks-propertyiq && make summary)   # watch the run"
+  echo "  (cd ../databricks-propertyiq && uv run python scripts/parity_check.py --profile $PROFILE)"
+else
+  echo "cycle complete — nothing new to publish, so no Databricks run is due."
+fi
+echo
+echo "Only pipeline *code* changes need a deploy: cd ../databricks-propertyiq && make ship"

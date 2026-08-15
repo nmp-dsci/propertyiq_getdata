@@ -125,6 +125,13 @@ A publish converts partitions in a temp dir and deletes it after upload, so
 nothing is left on disk to inspect afterwards — use `scripts/inspect_parquet.py`
 to look at what was actually sent.
 
+**Publishing starts the Databricks job.** The medallion job in
+`databricks-propertyiq` carries a file-arrival trigger on `landing/`, so it
+launches itself roughly a minute after the last file lands, at most once every
+five minutes. Nothing needs to run it by hand, and only a change to the pipeline
+*code* needs a deploy (`make ship` there). On a loop this also means unattended
+job runs — and unattended compute — whenever there is genuinely new data.
+
 ## Source Stages
 
 NSW Gov still has explicit pull/extract/transform stages:
