@@ -1,4 +1,4 @@
-"""Collection-only ETL for NSW property sales and rental-bond data.
+"""Collection-only ETL for NSW property data sources.
 
 Public API — the stable entrypoints most callers need:
 
