@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "propertyiq-getdata"
 version = "0.1.0"
-description = "Collection-only ETL for NSW property sales and rental bond data."
+description = "Collection-only ETL for NSW property data sources."
 requires-python = ">=3.10"
 dependencies = [
   "beautifulsoup4",
@@ -37,3 +37,5 @@ include = ["propertyiq_getdata*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["live: hits a real upstream API; skipped by default, run with `pytest -m live`"]
+addopts = "-m 'not live'"

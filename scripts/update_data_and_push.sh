@@ -14,6 +14,10 @@ if [[ -f data/rentboard_df.csv && ! -f data/manifests/rentboard_lodgements_manif
   uv run propertyiq-getdata rentboard migrate-legacy --data-dir data
 fi
 uv run propertyiq-getdata rentboard update --data-dir data
+# Economic time series: cheap (a dozen small requests) and self-deduplicating --
+# a new snapshot appears only when the ABS / RBA actually released something.
+uv run propertyiq-getdata abs-ts update --data-dir data
+uv run propertyiq-getdata rba update --data-dir data
 uv run pytest
 
 scripts/data_push_with_one_backup.sh

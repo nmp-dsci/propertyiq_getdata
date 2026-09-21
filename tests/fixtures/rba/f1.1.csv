@@ -1,0 +1,20 @@
+﻿F1.1 INTEREST RATES AND YIELDS – MONEY MARKET
+Title,Cash Rate Target,Interbank Overnight Cash Rate,Highest Interbank Overnight Cash Rate,Lowest Interbank Overnight Cash Rate,Volume of Cash Market Transactions,Number of Cash Market Transactions,1-month BABs/NCDs,3-month BABs/NCDs,6-month BABs/NCDs,1-month OIS,3-month OIS,6-month OIS,1-month Treasury Note,3- month Treasury Note,6- month Treasury Note
+Description,Cash Rate Target; monthly average,Interbank Overnight Cash Rate; monthly average,Highest Interbank Overnight Cash Rate; monthly average,Lowest Interbank Overnight Cash Rate; monthly average,Volume of Interbank Overnight Cash Market Transactions; monthly sum,Number of Interbank Overnight Cash Market Transactions; monthly sum,Bank Accepted Bills/Negotiable Certificates of Deposit-1 month; monthly average,Bank Accepted Bills/Negotiable Certificates of Deposit-3 months; monthly average,Bank Accepted Bills/Negotiable Certificates of Deposit- 6 months; monthly average,Overnight Indexed Swaps-1 month; monthly average,Overnight Indexed Swaps-3 months; monthly average,Overnight Indexed Swaps-6 months; monthly average,Treasury Notes-1 month; monthly average,Treasury Notes-3 months; monthly average,Treasury Notes-6 months; monthly average
+Frequency,Monthly,Monthly,Monthly,Monthly,Monthly,Monthly,Monthly,Monthly,Monthly,Monthly,Monthly,Monthly,See notes,See notes,See notes
+Type,Original,Original,Original,Original,Original,Original,Original,Original,Original,Original,Original,Original,Original,Original,Original
+Units,Per cent,Per cent,Per cent,Per cent,$m,Number,Per cent,Per cent,Per cent,Per cent,Per cent,Per cent,Per cent,Per cent,Per cent
+
+
+Source,RBA,RBA,RBA,RBA,RBA,RBA,ASX,ASX,ASX,FENICS,FENICS,FENICS,RBA,RBA,RBA
+Publication date,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026,01-Sep-2026
+Series ID,FIRMMCRT,FIRMMCRI,FIRMMCRIHM,FIRMMCRILM,FIRMMCRIVM,FIRMMCRINM,FIRMMBAB30,FIRMMBAB90,FIRMMBAB180,FIRMMOIS1,FIRMMOIS3,FIRMMOIS6,FIRMMTN1,FIRMMTN3,FIRMMTN6
+30/06/1969,,,,,,,,5.90
+30/06/1969,,,,,,,,5.90
+31/07/1969,,,,,,,,5.80
+31/05/2026,4.31,4.31,4.32,4.31,30037,223,4.28,4.43,4.77
+30/06/2026,4.35,4.35,4.35,4.35,37100,295,4.30,4.46,4.83
+31/07/2026,4.35,4.35,4.35,4.35,41635,301,4.31,4.48,4.78
+31/08/2026,4.35,4.35,4.35,4.35,27378,199,4.32,4.51,4.83
+
+

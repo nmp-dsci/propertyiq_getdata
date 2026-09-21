@@ -1,9 +1,14 @@
 # propertyiq_getdata
 
-Collection-only ETL for two NSW property data sources:
+Collection-only ETL for NSW property data sources:
 
 - NSW Valuer General property sales (`nswgov`)
 - NSW rental bond lodgements (`rentboard`)
+- ABS Census General Community Profile, by postcode (`abs`)
+- ABS economic time series — dwelling values and prices, CPI, labour force,
+  wages, housing lending, building approvals, population — every state +
+  Australia, full history (`abs_ts`)
+- RBA interest rates — cash rate, mortgage/lending rates, rate decisions (`rba`)
 
 This repo fetches public source files and writes normalized, period-partitioned
 CSV outputs. Downstream cleaning, joining, and database loading belongs in the
@@ -18,10 +23,24 @@ data/
   normalized/
     nswgov/sales/period=YYYYMMDD.csv
     rentboard/lodgements/year=YYYY/month=MM.csv
+    abs/poa/census_year=YYYY.csv           # one row per postcode, full GCP table set
+    abs/poa/census_year=YYYY_columns.csv   # column -> table/short-code/long-label dictionary
+    abs_ts/<dataset>/asof=YYYY-MM-DD.csv   # one snapshot per release; full history, all regions
+    rba/<dataset>/asof=YYYY-MM-DD.csv
   manifests/
     nswgov_sales_manifest.csv
     rentboard_lodgements_manifest.csv
+    abs_poa_manifest.csv
+    abs_ts_manifest.csv
+    rba_manifest.csv
 ```
+
+`abs_ts` and `rba` share one long-format schema (one row per series and
+period): `source, dataset, series_id, series_label, dataflow, freq,
+time_period, period_start, value, unit, unit_mult, obs_status, obs_comment,
+region, base_period, asof`, plus `dim_*` code/label columns for the ABS
+dimensions. Because the ABS revises history, each release is a new `asof=`
+snapshot rather than an edit; take `max(asof)` per series downstream.
 
 Manifest columns:
 
@@ -148,6 +167,41 @@ Rentboard is self-contained:
 uv run propertyiq-getdata rentboard update --data-dir data
 ```
 
+ABS is a rare, manual-trigger job (Census data refreshes every ~5 years, not
+weekly) but has the same explicit stages:
+
+```bash
+uv run propertyiq-getdata abs pull --data-dir data --census-year 2021 --state NSW
+uv run propertyiq-getdata abs extract --data-dir data --census-year 2021 --state NSW
+uv run propertyiq-getdata abs transform --data-dir data --census-year 2021 --state NSW
+# or, all three:
+uv run propertyiq-getdata abs update --data-dir data --census-year 2021 --state NSW
+```
+
+ABS time series and RBA tables are pulled in full every run (they are small)
+and a new snapshot is written only when the content changed:
+
+```bash
+uv run propertyiq-getdata abs-ts update --data-dir data                       # 8 datasets, ~12 s
+uv run propertyiq-getdata rba update --data-dir data                          # 3 tables
+uv run propertyiq-getdata abs-ts update --data-dir data --dataset cpi --force  # one dataset, re-download
+uv run propertyiq-getdata abs-ts pull --data-dir data --dry-run               # show the URLs
+```
+
+| dataset | upstream | headline series | history |
+|---|---|---|---|
+| `dwelling_values` | ABS `RES_DWELL_ST` | Total Value of Dwellings: mean price, stock value, dwelling count by state | 2011-Q3 → |
+| `dwelling_medians` | ABS `RES_DWELL` | median house / unit price and transfers by capital city and rest-of-state | 2002-Q1 → |
+| `cpi` | ABS `CPI` | all-groups index and % changes, 8 capitals + AUS, quarterly and monthly | 1948-Q3 → |
+| `labour_force` | ABS `LF` | employed, unemployed, unemployment rate, participation rate; SA + trend; by state | 1978-02 → |
+| `wpi` | ABS `WPI` | wage price index, by state | 1997-Q3 → |
+| `lending_housing` | ABS `LEND_HOUSING` | new housing loan commitments, owner-occupier / investor / first home buyer, by state | 2002-Q3 → |
+| `building_approvals` | ABS `BA_SA2` ×3 | new dwelling units approved by building type, by state | 2011-07 → |
+| `population` | ABS `ERP_Q` | estimated resident population and annual % change, by state | 1981-Q3 → |
+| `rba_cash_rate` | RBA F1.1 | cash rate target, interbank overnight, bank bills | 1969-06 → |
+| `rba_lending_rates` | RBA F5 | housing variable / fixed rates, owner-occupier vs investor; business; personal | 1959-01 → |
+| `rba_rate_changes` | RBA A2 | every cash rate decision as announced | 1990-01 → |
+
 ### How NSW Gov archives are found
 
 The Valuer General retired the portal page this scraper used to parse, and the
@@ -185,6 +239,7 @@ partitions:
 ```bash
 uv run propertyiq-getdata nswgov manifest --data-dir data
 uv run propertyiq-getdata rentboard manifest --data-dir data
+uv run propertyiq-getdata abs manifest --data-dir data
 ```
 
 ## Google Drive Storage
@@ -222,10 +277,15 @@ propertyiq_getdata/
 ├── core/                  # reusable pipeline mechanics, source-agnostic
 │   ├── paths.py           #   data-dir + partition path resolution
 │   ├── manifest.py        #   manifest schema + writer
-│   └── io.py              #   atomic CSV writes
+│   ├── io.py              #   atomic CSV writes
+│   ├── snapshot.py        #   asof= snapshots with content-hash dedupe
+│   └── series.py          #   long-format contract shared by abs_ts + rba
 ├── sources/               # one cohesive module per collected source
 │   ├── nswgov.py          #   NSW Valuer General property sales
-│   └── rentboard.py       #   NSW rental bond lodgements
+│   ├── rentboard.py       #   NSW rental bond lodgements
+│   ├── abs.py             #   ABS Census GCP DataPack, by postcode (POA)
+│   ├── abs_ts.py          #   ABS Data API time series (SDMX)
+│   └── rba.py             #   RBA statistical tables (interest rates)
 ├── sinks/                 # one module per publish target (counterpart of sources/)
 │   └── databricks.py      #   updates-only Parquet -> Unity Catalog volume
 ├── audit.py               # cross-source output summary / integrity check

@@ -8,6 +8,8 @@ build/
 dist/
 *.pyc
 *.csv
+# small real-data samples the offline tests parse
+!tests/fixtures/**/*.csv
 *.sqlite
 # Local data is stored outside git, currently in Google Drive.
 /data/

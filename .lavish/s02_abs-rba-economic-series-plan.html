@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>abs-data: ABS + RBA economic time series ETL</title>
+<script>
+  (function(){
+    var t; try{t=localStorage.getItem('s02-theme')}catch(e){}
+    var mq=window.matchMedia('(prefers-color-scheme: dark)');
+    if(t!=='light'&&t!=='dark'){t=mq.matches?'dark':'light'}
+    document.documentElement.setAttribute('data-theme',t);
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#F4F6F3; --panel:#FFFFFF; --panel-2:#FAFBF9; --ink:#14181C; --ink-soft:#3E4A44;
+  --muted:#5A655D; --faint:#77837A; --line:#DDE4DC; --line-2:#C9D2C9;
+  --signal:#17876B; --signal-soft:#E4F1EC; --amber:#B26A12; --amber-soft:#F6ECDC;
+  --fail:#A8402F; --fail-soft:#F4E2DE;
+  --chip-bg:#E4F1EC; --chip-ink:#11674F; --hover:#FAFBF9;
+  --nav-bg:rgba(244,246,243,.85); --grid-line:rgba(16,22,19,.028);
+  --hero-glow:rgba(23,135,107,.07); --pre-bg:#14181C; --pre-ink:#E8ECE9;
+  --shadow:0 1px 2px rgba(16,22,19,.04),0 10px 26px -14px rgba(16,22,19,.16);
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,monospace;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --w:1120px;
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#101511; --panel:#171E19; --panel-2:#1C2420; --ink:#E8EDE9; --ink-soft:#C3CCC5;
+  --muted:#96A29A; --faint:#71807A; --line:#242E27; --line-2:#33413A;
+  --signal:#43C29A; --signal-soft:#173428; --amber:#D19243; --amber-soft:#2A2113;
+  --fail:#E0715C; --fail-soft:#2E1A16;
+  --chip-bg:#173428; --chip-ink:#7FDDBB; --hover:#1C2420;
+  --nav-bg:rgba(16,21,17,.85); --grid-line:rgba(232,237,233,.035);
+  --hero-glow:rgba(67,194,154,.09); --pre-bg:#0B0F0C; --pre-ink:#DEE5E0;
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 26px -14px rgba(0,0,0,.55);
+}
+*,*::before,*::after{box-sizing:border-box;min-width:0}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.62;letter-spacing:-.005em;
+  background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+  background-size:34px 34px;transition:background-color .2s,color .2s}
+a{color:var(--signal);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+h1,h2,h3,h4{font-weight:600;letter-spacing:-.02em;line-height:1.2;margin:0}
+:where(p,h1,h2,h3,h4,li,td,th,summary,label,button){overflow-wrap:anywhere}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
+.nav{position:sticky;top:0;z-index:50;background:var(--nav-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav-inner{max-width:var(--w);margin:0 auto;padding:11px 22px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:10px;color:var(--ink)}
+.wordmark{font-family:var(--mono);font-weight:600;font-size:15px;letter-spacing:-.02em}
+.wordmark .cursor{display:inline-block;width:.55em;height:1.02em;background:var(--signal);vertical-align:-.16em;margin:0 .12em;animation:np-blink 1.15s steps(1) infinite}
+@keyframes np-blink{50%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.wordmark .cursor{animation:none !important}}
+.brand-role{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.nav-links{display:flex;gap:13px;align-items:center;flex-wrap:wrap}
+.nav-links a{color:var(--ink-soft);font-size:13px;font-weight:500}
+.nav-links a:hover{color:var(--signal);text-decoration:none}
+.theme-toggle{font-size:14px;line-height:1;background:transparent;cursor:pointer;border:1px solid var(--line-2);border-radius:999px;width:31px;height:31px;color:var(--ink-soft);display:inline-flex;align-items:center;justify-content:center;padding:0}
+.theme-toggle:hover{border-color:var(--signal);color:var(--signal)}
+.hero{border-bottom:1px solid var(--line);background:radial-gradient(680px 320px at 85% -40%,var(--hero-glow),transparent)}
+.hero-inner{max-width:var(--w);margin:0 auto;padding:54px 22px 40px}
+.hero h1{font-size:clamp(28px,4.4vw,44px);line-height:1.1;letter-spacing:-.028em;max-width:26ch;padding-bottom:.06em}
+.hero h1 .accent{color:var(--signal)}
+.hero-sub{color:var(--muted);font-size:clamp(15px,1.8vw,17.5px);max-width:82ch;margin:16px 0 0}
+.metrics{display:grid;gap:12px;margin-top:30px;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr))}
+.met{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px;box-shadow:var(--shadow)}
+.met-n{display:block;font-family:var(--mono);font-weight:600;font-size:18px;line-height:1.3;color:var(--signal);font-variant-numeric:tabular-nums}
+.met-l{display:block;font-size:11.5px;color:var(--faint);margin-top:2px}
+.wrap{max-width:var(--w);margin:0 auto;padding:0 22px 96px}
+section{margin-top:60px;scroll-margin-top:66px}
+section>h2{font-size:clamp(21px,2.8vw,28px)}
+section>h2 .snum{font-family:var(--mono);color:var(--signal);font-size:.78em;margin-right:9px}
+.sec-sub{color:var(--muted);font-size:14.5px;max-width:88ch;margin:10px 0 0}
+h3.blk{font-size:17.5px;margin:30px 0 12px;display:flex;align-items:center;gap:9px}
+h3.blk::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--signal);flex:none}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow)}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr))}
+.card h4{font-size:15px;margin-bottom:7px;letter-spacing:-.01em}
+.card p{margin:6px 0;font-size:14px;color:var(--ink-soft)}
+.card .one{font-size:13px;color:var(--muted);font-style:italic;border-left:2px solid var(--line-2);padding-left:10px;margin-top:9px}
+.pill{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--chip-bg);color:var(--chip-ink);white-space:nowrap}
+.pill.amber{background:var(--amber-soft);color:var(--amber)}
+.pill.fail{background:var(--fail-soft);color:var(--fail)}
+.pill.grey{background:var(--panel-2);color:var(--faint);border:1px solid var(--line)}
+.tag-row{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);margin-top:8px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;background:var(--panel)}
+thead th{background:var(--panel-2);text-align:left;font-weight:600;color:var(--ink);padding:11px 13px;border-bottom:1px solid var(--line-2);font-size:12.5px;vertical-align:bottom}
+td{padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-soft)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--hover)}
+td.step{font-weight:600;color:var(--ink)}
+td strong{color:var(--ink);font-weight:600}
+.mono{font-family:var(--mono);font-size:12.5px}
+.nw{white-space:nowrap}
+.callout{border-radius:12px;padding:16px 18px;border:1px solid var(--line);background:var(--panel);margin-top:14px}
+.callout.star{border-color:var(--signal);background:var(--signal-soft)}
+.callout.warn{border-color:var(--amber);background:var(--amber-soft)}
+.callout.red{border-color:var(--fail);background:var(--fail-soft)}
+.callout h4{font-size:15px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.callout p,.callout li{font-size:13.5px;color:var(--ink-soft)}
+.callout ul{margin:6px 0 0;padding-left:20px}
+.callout li{margin:4px 0}
+pre{background:var(--pre-bg);color:var(--pre-ink);border-radius:10px;padding:13px 15px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.72;margin:10px 0;border:1px solid var(--line)}
+pre .c{color:#7E9C8F}
+pre .k{color:#7FDDBB}
+code:not(pre code){font-family:var(--mono);font-size:.88em;background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--ink-soft)}
+.list-clean{list-style:none;padding:0;margin:8px 0 0}
+.list-clean li{position:relative;padding-left:22px;margin:7px 0;font-size:13.5px;color:var(--ink-soft)}
+.list-clean li::before{content:"";position:absolute;left:4px;top:9px;width:6px;height:6px;border-radius:50%;background:var(--signal)}
+.list-clean.amber li::before{background:var(--amber)}
+.diagram-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px 8px;box-shadow:var(--shadow);overflow-x:auto;margin-top:12px}
+.diagram-card .mermaid{min-width:300px;display:flex;justify-content:center;font-family:var(--sans);margin-top:6px}
+.diagram-card .mermaid svg{max-width:100%;height:auto}
+.dia-cap{font-size:12.5px;color:var(--faint);text-align:center;margin:2px 0 8px}
+.chk{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;margin-top:10px}
+.chk-row{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:12px;align-items:start;padding:12px 16px;border-bottom:1px solid var(--line)}
+.chk-row:last-child{border-bottom:none}
+.chk-row:hover{background:var(--hover)}
+.chk-row input[type=checkbox]{margin-top:4px;accent-color:var(--signal);width:15px;height:15px}
+.chk-main{font-size:13.5px;color:var(--ink);font-weight:500}
+.chk-sub{font-size:12.5px;color:var(--muted);margin-top:3px;font-weight:400}
+.chk-sub code{font-size:11.5px}
+.chk-when{justify-self:end}
+footer{border-top:1px solid var(--line);margin-top:70px}
+.foot-inner{max-width:var(--w);margin:0 auto;padding:26px 22px 60px;color:var(--faint);font-size:12px}
+.src{font-family:var(--mono);font-size:11px;line-height:1.9;word-break:break-all}
+.note-box{font-size:12.5px;color:var(--muted);background:var(--panel-2);border:1px dashed var(--line-2);border-radius:9px;padding:11px 14px;margin-top:14px}
+@media print{.nav,.theme-toggle{display:none}body{background:#fff}}
+</style>
+
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <div class="brand">
+      <span class="wordmark">nmp<span class="cursor"></span>dsci</span>
+      <span class="brand-role">// abs-data economic series plan</span>
+    </div>
+    <div class="nav-links">
+      <a href="#ask">Your ask</a>
+      <a href="#status">Branch</a>
+      <a href="#findings">Findings</a>
+      <a href="#catalogue">Catalogue</a>
+      <a href="#design">Design</a>
+      <a href="#contract">Contract</a>
+      <a href="#steps">Steps</a>
+      <a href="#tests">Tests</a>
+      <a href="#risks">Risks</a>
+      <a href="#decide">Decisions ✓</a>
+      <button class="theme-toggle" id="themeBtn" aria-label="Toggle theme">◑</button>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="hero-inner">
+    <p class="kicker">propertyiq_getdata · branch abs-data · sources: ABS Data API (SDMX) + RBA statistical tables</p>
+    <h1>Collect <span class="accent">ABS &amp; RBA economic time series</span> as a third source family.</h1>
+    <p class="hero-sub">Dwelling values and prices, CPI, unemployment, wages, housing lending, building approvals, population — <strong>for every state and territory plus Australia</strong> — and the cash rate and mortgage rates from the RBA. Everything the user asked about is available as a <strong>machine-readable API or CSV endpoint, no scraping</strong>: every candidate below was queried live on 21 Sep 2026 and the latest period recorded. Two new source modules, a shared series registry, snapshot-per-release partitions that survive ABS revisions, and the existing manifest contract. No Databricks work: that project has ended. Nothing in <code>nswgov</code>, <code>rentboard</code> or the Census <code>abs</code> source changes.</p>
+    <div class="metrics">
+      <div class="met"><span class="met-n">9</span><span class="met-l">ABS dataflows verified live (CSV, all states)</span></div>
+      <div class="met"><span class="met-n">3</span><span class="met-l">RBA tables for interest rates (F1.1, F5, A2)</span></div>
+      <div class="met"><span class="met-n">2</span><span class="met-l">new modules: sources/abs_ts.py, sources/rba.py</span></div>
+      <div class="met"><span class="met-n">1948</span><span class="met-l">earliest observation (CPI) — full history pulled, no startPeriod</span></div>
+      <div class="met"><span class="met-n">1</span><span class="met-l">discontinued series to avoid (RPPI, ended 2021-Q4)</span></div>
+      <div class="met"><span class="met-n">~60k</span><span class="met-l">rows / ~12 MB per full snapshot of all datasets</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ============================================================ -->
+<section id="ask" style="margin-top:40px">
+  <h2><span class="snum">00</span>What you asked for → where it lands</h2>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Your ask</th><th>dataset(s)</th><th>upstream</th><th>headline series</th><th>history</th></tr></thead>
+    <tbody>
+      <tr><td class="step">Price index (Total Value of Dwellings page)</td><td class="mono">dwelling_values · dwelling_medians · rppi</td><td>ABS <code>RES_DWELL_ST</code>, <code>RES_DWELL</code>, <code>RPPI</code></td><td>Mean price by state; median house / unit price by capital city; the discontinued price index 2002–2021</td><td class="mono nw">2002 → 2026-Q2</td></tr>
+      <tr><td class="step">Unemployment / employment rate</td><td class="mono">labour_force</td><td>ABS <code>LF</code></td><td><strong>Unemployment rate</strong> (M13), participation rate (M16), employed (M3), unemployed (M6) — SA + trend, every state + AUS, monthly</td><td class="mono nw">1978-02 → 2026-07</td></tr>
+      <tr><td class="step">Interest rates</td><td class="mono">rba_cash_rate · rba_lending_rates · rba_rate_changes</td><td><strong>RBA</strong> tables F1.1, F5, A2 (not ABS)</td><td>Cash rate target; bank variable / fixed mortgage rates, owner-occupier vs investor; every cash-rate decision since 1990</td><td class="mono nw">1959 → 2026-08</td></tr>
+      <tr><td class="step">Other economic data</td><td class="mono">cpi · wpi · lending_housing · building_approvals · population</td><td>ABS <code>CPI</code>, <code>WPI</code>, <code>LEND_HOUSING</code>, <code>BA_SA2</code>×3, <code>ERP_Q</code></td><td>Inflation (Q + M), wages, new housing loan commitments (OO / investor / FHB), dwelling approvals, resident population</td><td class="mono nw">1948 → 2026</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="status">
+  <h2><span class="snum">01</span>Branch state — what you already have</h2>
+  <p class="sec-sub">The branch <code>abs-data</code> already existed on <code>origin</code>, so I checked it out instead of creating it. It carries one commit that is <em>not</em> this task, and it is behind <code>master</code>.</p>
+
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <h4>On <code>abs-data</code> (1 commit ahead of master)</h4>
+      <p><code>7da4b76 Add abs source: ABS Census GCP data by NSW postcode</code> — a complete Census DataPack source (<code>sources/abs.py</code>, 289 lines, tests, AGENTS.md, CLI <code>abs update</code>). It fetches the 2021 Census General Community Profile by postcode. <strong>Static, 5-yearly, not a time series.</strong> It is unrelated to the price-index / macro work but it is good and should stay.</p>
+      <p class="one">Naming consequence: the id <code>abs</code> and the CLI command <code>abs</code> are taken by the Census source. The new time-series source needs a different name (see decision D3).</p>
+    </div>
+    <div class="card">
+      <h4>On <code>master</code> but missing here (PR #3, #4)</h4>
+      <p>The nswgov bulk-archive fix (<code>4e461ef</code>, sources/nswgov.py + tests) and the <code>curl-cffi</code> dependency it needs — plus the Databricks publish sink, which is <strong>not needed</strong> (that project has ended; the sink stays untouched and un-extended).</p>
+      <p class="one"><strong>Step 0 is still <code>git rebase master</code></strong> so the branch carries the nswgov fix and the current AGENTS.md; expect small conflicts in <code>cli.py</code>, <code>__init__.py</code>, <code>AGENTS.md</code>, <code>README.md</code>, <code>.gitignore</code> (both sides removed the <code>.lavish/*</code> ignore — keep it removed).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="findings">
+  <h2><span class="snum">02</span>What the investigation found</h2>
+  <p class="sec-sub">I did not read the "Data downloads" xlsx page you linked and reverse-engineer it. The same numbers sit behind the ABS Data API — SDMX 2.1 REST at <code>https://data.api.abs.gov.au/rest/</code> — which returns CSV directly. That is a far better ETL surface than scraping spreadsheet links.</p>
+
+  <div class="callout star">
+    <h4>The "Total Value of Dwellings" release = two SDMX dataflows, both live to 2026-Q2</h4>
+    <ul>
+      <li><code>RES_DWELL_ST</code> — value of dwelling stock, number of dwellings, <strong>mean price</strong>, for all 8 states/territories + Australia. Exactly the tables on the page you linked.</li>
+      <li><code>RES_DWELL</code> — <strong>median price and transfer counts</strong> for established houses and attached dwellings, by GCCSA — every capital city and rest-of-state (26 regions). This is the closest thing the ABS still publishes to a house price index.</li>
+      <li><code>RPPI</code> (Residential Property Price Index) is <strong>discontinued</strong> — last observation 2021-Q4. Do not build on it; TVD replaced it.</li>
+    </ul>
+  </div>
+
+  <h3 class="blk">How the API behaves (verified)</h3>
+  <div class="grid g3">
+    <div class="card"><h4>One URL shape for everything</h4>
+      <pre>GET /rest/data/ABS,{DATAFLOW}/{KEY}      <span class="c"># no startPeriod → full history</span>
+Accept: application/vnd.sdmx.data+csv;labels=both</pre>
+      <p><code>{KEY}</code> is dot-separated dimension codes in DSD order (the count must match the DSD exactly — one dot short returns 404); <code>+</code> ORs values, empty = all. <code>labels=both</code> gives <code>1: New South Wales</code> in every dimension column — no separate codelist join needed.</p></div>
+    <div class="card"><h4>Structure is discoverable</h4>
+      <p><code>/rest/dataflow/ABS?detail=allstubs</code> lists 1,227 dataflows. <code>/rest/dataflow/ABS/{ID}?references=all</code> gives the dimension order and every codelist. The new module should cache these, not hardcode labels.</p>
+      <p class="one">Anomaly: every dataflow carries the annotation <code>NonProductionDataflow=true</code>, including CPI and LF. It is meaningless for us — ignore it.</p></div>
+    <div class="card"><h4>Failure signature</h4>
+      <p>A key that matches nothing returns <strong>HTTP 404 with body <code>NoRecordsFound</code></strong>, not an empty CSV. Same for a period after the last release. The pull stage must treat 404+that body as "zero rows" (and raise, per repo convention), not as a transport error to retry.</p>
+      <p class="one">No auth, no documented rate limit; keep one request per dataset per run and a real <code>User-Agent</code>.</p></div>
+  </div>
+
+  <h3 class="blk">Interest rates are not ABS — they are RBA</h3>
+  <div class="grid g3">
+    <div class="card"><h4>F1.1 — money market, monthly</h4><p><code>rba.gov.au/statistics/tables/csv/f1.1-data.csv</code>. Cash Rate Target monthly average, interbank overnight rate, BABs, OIS. Series IDs in row 10 (<code>FIRMMCRTM</code> etc.).</p></div>
+    <div class="card"><h4>F5 — indicator lending rates, monthly</h4><p><code>f5-data.csv</code>. Housing loans: banks variable standard/discounted, 3-year fixed, owner-occupier vs investor; securitised outstanding averages. The mortgage-rate series a property model actually wants.</p></div>
+    <div class="card"><h4>A2 — policy changes, as announced</h4><p><code>a2-data.csv</code>. Every cash rate target change since 1990 with its date — the event series. (F1 daily also exists but is overkill; monthly F1.1 is enough.)</p></div>
+  </div>
+  <p class="note-box">RBA CSVs share one layout: a title line, then <code>Title / Description / Frequency / Type / Units / (blank) / Source / Publication date / Series ID</code> header rows, then <code>DD-MMM-YYYY,val,val…</code>. Parse by locating the <code>Series ID</code> row and using those IDs as the stable column keys (titles get re-worded; IDs don't). Requires a browser-like <code>User-Agent</code> (default curl UA is blocked). <strong>Two date formats:</strong> F1.1/F5 use <code>DD/MM/YYYY</code>, A2 uses <code>DD-MMM-YYYY</code> — parse both explicitly, never <code>dayfirst</code> guessing. The files are padded with thousands of blank lines at the end; drop them. Pre-1990 rows in A2 contain ranges like <code>17.00 to 17.50</code> — keep as text in raw, coerce to NaN in normalized.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="catalogue">
+  <h2><span class="snum">03</span>Series catalogue — proposed initial registry</h2>
+  <p class="sec-sub">Each row is one <code>dataset</code> in the new source. <span class="pill">verified</span> = I pulled this exact key today and it returned rows with the stated latest period. <span class="pill amber">refine</span> = dataflow verified, the exact key still needs a codelist look-up during the build. <strong>Region is never filtered</strong> (empty position in the key = every state, territory, capital city and Australia). Measures are curated to the headline series; D4 asks whether to widen that.</p>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>dataset</th><th>dataflow / table</th><th>what it gives (all states + AUS)</th><th>freq</th><th>history (verified)</th><th>key (dimension filter)</th><th>status</th></tr></thead>
+    <tbody>
+      <tr><td class="step">dwelling_values</td><td class="mono">RES_DWELL_ST</td><td>Value of dwelling stock, dwelling count, <strong>mean price</strong> — 8 states/territories + AUS</td><td>Q</td><td class="mono nw">2011-Q3 → 2026-Q2</td><td class="mono">..Q (all)</td><td><span class="pill">verified</span> 2,700 rows</td></tr>
+      <tr><td class="step">dwelling_medians</td><td class="mono">RES_DWELL</td><td>Median price + transfer counts, houses vs attached, <strong>every GCCSA</strong> (each capital + rest-of-state, 26 regions)</td><td>Q</td><td class="mono nw">2002-Q1 → 2026-Q2</td><td class="mono">..Q (all)</td><td><span class="pill">verified</span> 5,616 rows</td></tr>
+      <tr><td class="step">cpi</td><td class="mono">CPI (v2.0.0)</td><td>All-groups index + % changes, <strong>all 8 capital cities</strong> + weighted average, original + SA. Now carries the <strong>monthly</strong> series too (to 2026-07) — <code>CPI_M</code> stopped at 2025-09.</td><td>Q + M</td><td class="mono nw">1948-Q3 → 2026-Q2 / 2026-07</td><td class="mono">1+2+3.10001.10+20..Q+M</td><td><span class="pill">verified</span> 5,990 rows · 9 regions · base Sep-2025=100</td></tr>
+      <tr><td class="step">labour_force</td><td class="mono">LF</td><td>Employed, unemployed, <strong>unemployment rate</strong>, participation rate — persons, all ages, SA + trend, <strong>every state + AUS</strong></td><td>M</td><td class="mono nw">1978-02 → 2026-07</td><td class="mono">M3+M6+M13+M16.3.1599.20+30..M</td><td><span class="pill">verified</span> 37,248 rows · 6 MB · 9 regions</td></tr>
+      <tr><td class="step">wpi</td><td class="mono">WPI</td><td>Wage Price Index, total hourly rates ex bonuses, all sectors/industries — every state (original) + AUS (original + SA; states are not published SA)</td><td>Q</td><td class="mono nw">1997-Q3 → 2026-Q2</td><td class="mono">1+3.THRPEB.7.TOT.10+20..Q</td><td><span class="pill">verified</span> 2,320 rows · 9 regions</td></tr>
+      <tr><td class="step">lending_housing</td><td class="mono">LEND_HOUSING</td><td>New loan commitments (number, value) owner-occupier / investor / non-FHB / first-home-buyer, every state + AUS. <strong>Quarterly now</strong> (not monthly as in older docs).</td><td>Q</td><td class="mono nw">2002-Q3 → 2026-Q2</td><td class="mono">FIN_NUM+FIN_VAL.NEWCOMMITS.DV8368.TOTDWELL+TOTHOUS.TOT.DV5167+DV5167_NONFHB+DV5168+DV5167_FHB+DV5168_FHB.20..Q</td><td><span class="pill">verified</span> 6,804 rows · 9 regions (total OO/investor/non-FHB live under <code>TOTDWELL</code>; FHB under <code>TOTHOUS</code>)</td></tr>
+      <tr><td class="step">building_approvals</td><td class="mono">BA_SA2 (v2.0.0)</td><td>Dwelling units approved, new work, total sectors — houses / total residential, every state + AUS. <strong>History is split across three dataflows</strong>; the dataset pulls all three and stitches them.</td><td>M</td><td class="mono nw">2011-07 → 2026-07<br>(BA_SA2_201116: 2011-07→2016-06<br>BA_SA2_2016-21: 2016-07→2021-06<br>BA_SA2: 2021-07→)</td><td class="mono">1.9.1.100+110+120+130.STE+AUS..M (same key on all three)</td><td><span class="pill">verified</span> ~2,160 rows × 3 · 9 regions; 120/130 <span class="pill amber">refine</span></td></tr>
+      <tr><td class="step">population</td><td class="mono">ERP_Q</td><td>Estimated resident population + annual % change, persons, every state + AUS</td><td>Q</td><td class="mono nw">1981-Q3 → 2026-Q1</td><td class="mono">1+3.3.TOT..Q</td><td><span class="pill">verified</span> 3,222 rows · 9 regions</td></tr>
+      <tr><td class="step">rba_cash_rate</td><td class="mono">RBA F1.1</td><td>Cash rate target (monthly avg), interbank overnight, 3-month BABs</td><td>M</td><td class="mono nw">1969-06 → 2026-08</td><td class="mono">columns by Series ID</td><td><span class="pill">verified</span> layout</td></tr>
+      <tr><td class="step">rba_lending_rates</td><td class="mono">RBA F5</td><td>Housing variable standard/discounted, 3-yr fixed, OO vs investor, securitised outstanding</td><td>M</td><td class="mono nw">1959-01 → 2026-08</td><td class="mono">columns by Series ID</td><td><span class="pill">verified</span> layout</td></tr>
+      <tr><td class="step">rba_rate_changes</td><td class="mono">RBA A2</td><td>Cash rate target changes as announced (event log since 1990)</td><td>event</td><td class="mono nw">1990-01-23 → 2026-05-06</td><td class="mono">columns by Series ID</td><td><span class="pill">verified</span> layout</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 class="blk">Deliberately out of the first cut</h3>
+  <ul class="list-clean amber">
+    <li><strong>RPPI</strong> — dead since 2021-Q4, but it holds a true price <em>index</em> for every capital city + AUS from 2002-Q1 (6,372 rows verified, all regions). Since you want maximum history, the plan now includes it as a <strong>one-off backfill dataset</strong> flagged <code>frozen=True</code> in the registry: pulled once, never expected to change, excluded from the staleness audit. Tick it in D2 to confirm.</li>
+    <li><strong>Sub-state geography</strong> (<code>BA_SA2</code> at SA2/SA4, <code>ABS_ANNUAL_ERP_ASGS2021</code>). These are joinable to postcodes only through an ASGS↔POA correspondence file, which is a separate piece of work. Everything above is state / capital-city level and joins to the property tables on <em>time</em>, not on place. See D5.</li>
+    <li><strong>Job Vacancies</strong> (<code>JV</code>), <strong>Building Activity</strong> (<code>BUILDING_ACTIVITY</code>, commencements/completions), <strong>Retail Trade</strong>, <strong>National Accounts</strong>. All available with the same mechanism; adding one is a registry entry, not code. Tick them in D2 if wanted now.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<section id="design">
+  <h2><span class="snum">04</span>Proposed design</h2>
+  <p class="sec-sub">Follows the repo rule: one cohesive module per source under <code>sources/</code>, source-agnostic mechanics in <code>core/</code>, one publish target per module under <code>sinks/</code>. Two stages (pull, transform) — no extract, because the API already returns tidy rows.</p>
+
+  <div class="diagram-card">
+    <svg viewBox="0 0 1000 300" width="100%" role="img" aria-labelledby="flow-title" style="font-family:var(--sans);font-size:13px">
+      <title id="flow-title">Pull raw snapshot, transform to normalized snapshot, manifest, publish</title>
+      <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      <g id="n-abs" ><rect x="20" y="40" width="190" height="70" rx="10" fill="var(--panel)" stroke="var(--signal)" stroke-width="1.5"/><text x="115" y="68" text-anchor="middle" fill="var(--ink)" font-weight="600">ABS Data API</text><text x="115" y="90" text-anchor="middle" fill="var(--muted)" font-size="11.5">SDMX-CSV · 8 dataflows</text></g>
+      <g id="n-rba"><rect x="20" y="180" width="190" height="70" rx="10" fill="var(--panel)" stroke="var(--signal)" stroke-width="1.5"/><text x="115" y="208" text-anchor="middle" fill="var(--ink)" font-weight="600">RBA tables</text><text x="115" y="230" text-anchor="middle" fill="var(--muted)" font-size="11.5">static CSV · F1.1, F5, A2</text></g>
+
+      <g id="n-pull"><rect x="290" y="110" width="170" height="80" rx="10" fill="var(--panel)" stroke="var(--line-2)"/><text x="375" y="138" text-anchor="middle" fill="var(--ink)" font-weight="600">pull</text><text x="375" y="158" text-anchor="middle" fill="var(--muted)" font-size="11.5">raw/&lt;src&gt;/&lt;dataset&gt;/</text><text x="375" y="174" text-anchor="middle" fill="var(--muted)" font-size="11.5">asof=YYYY-MM-DD.csv (verbatim)</text></g>
+      <g id="n-xform"><rect x="540" y="110" width="170" height="80" rx="10" fill="var(--panel)" stroke="var(--line-2)"/><text x="625" y="138" text-anchor="middle" fill="var(--ink)" font-weight="600">transform</text><text x="625" y="158" text-anchor="middle" fill="var(--muted)" font-size="11.5">normalized/&lt;src&gt;/&lt;dataset&gt;/</text><text x="625" y="174" text-anchor="middle" fill="var(--muted)" font-size="11.5">asof=…csv · skip if sha unchanged</text></g>
+      <g id="n-man"><rect x="790" y="40" width="190" height="60" rx="10" fill="var(--panel)" stroke="var(--line-2)"/><text x="885" y="65" text-anchor="middle" fill="var(--ink)" font-weight="600">manifest</text><text x="885" y="84" text-anchor="middle" fill="var(--muted)" font-size="11.5">existing write_manifest()</text></g>
+      <g id="n-audit"><rect x="790" y="180" width="190" height="60" rx="10" fill="var(--panel)" stroke="var(--line-2)"/><text x="885" y="205" text-anchor="middle" fill="var(--ink)" font-weight="600">audit / Drive sync</text><text x="885" y="224" text-anchor="middle" fill="var(--muted)" font-size="11.5">existing audit.py · scripts/ rclone</text></g>
+
+      <g stroke="var(--faint)" stroke-width="1.5" fill="none" marker-end="url(#arr)" color="var(--faint)">
+        <path d="M210 75 C250 75 250 130 290 140"/>
+        <path d="M210 215 C250 215 250 170 290 160"/>
+        <path d="M460 150 L540 150"/>
+        <path d="M710 140 C750 140 750 70 790 70"/>
+        <path d="M710 160 C750 160 750 210 790 210"/>
+      </g>
+      <text x="375" y="230" text-anchor="middle" fill="var(--faint)" font-size="11.5">series registry: SeriesSpec(dataset, dataflow, key, params) · one HTTP request per dataset</text>
+    </svg>
+    <p class="dia-cap">Each run pulls every registered dataset in full (they are small — hundreds to a few thousand rows), then keeps the snapshot only if its content differs from the last one in the manifest.</p>
+  </div>
+
+  <div class="callout star">
+    <h4>Rule: every pull takes the full history the publisher offers</h4>
+    <ul>
+      <li>ABS: <strong>no region filter and no <code>startPeriod</code> parameter, ever.</strong> The API returns the whole series from its first observation (CPI 1948-Q3, ERP 1981-Q3, LF 1978-02). The largest full pull is LF at 37,248 rows / ~6 MB; the whole registry is ~60k rows / ~12 MB per snapshot — small. <code>SeriesSpec</code> therefore has no <code>start_period</code> field, so nobody can accidentally truncate a series.</li>
+      <li>Where the ABS split a series across dataflows (building approvals ×3), the registry lists <strong>all</strong> of them under one dataset and transform concatenates by <code>period_start</code>, keeping <code>dim_DATAFLOW</code> so the seam is visible.</li>
+      <li>RBA: the CSVs are always complete (F5 back to 1959, F1.1 to 1969, A2 to 1990); nothing to configure.</li>
+      <li>Discontinued but long series (RPPI 2002–2021) are pulled once as <code>frozen</code> datasets so the historical depth is not lost.</li>
+      <li>Test: <code>test_registry_has_no_start_period</code> plus a live smoke assertion that each dataset's earliest <code>period_start</code> ≤ the value pinned in the catalogue above.</li>
+    </ul>
+  </div>
+
+  <h3 class="blk">Why snapshot-per-release, not period partitions</h3>
+  <div class="grid g2">
+    <div class="card">
+      <h4>The problem: ABS revises history</h4>
+      <p>Seasonally-adjusted series re-estimate every release; TVD rows come out flagged <code>p</code> (preliminary) and later flip to <code>r</code> (revised) with new values; CPI was rebased to Sep-2025=100 in v2.0.0 so <em>every</em> historical index number changed. A <code>period=2024-Q1.csv</code> partition written once and never touched would silently go stale — the opposite of what "idempotent" is supposed to mean here.</p>
+    </div>
+    <div class="card">
+      <h4>The fix: the partition key is the vintage</h4>
+      <p><code>normalized/abs_ts/cpi/asof=2026-09-21.csv</code> holds the full series as the ABS published it that day. Transform computes the file's sha256, compares to the newest manifest row for that dataset, and <strong>does not write</strong> if identical — so a weekly cron produces a new file only when the ABS actually released something (≈12/yr for monthly series, 4/yr for quarterly). Whoever consumes the data takes <code>max(asof)</code> per series — the same rule downstream already applies to rentboard's rewritten trailing month.</p>
+      <p class="one">Cost: ~10 kB–1 MB per snapshot; a few MB per year per dataset. Cheap enough that the simplicity wins. Alternative B (rewrite trailing N years by period) is in D1 if you disagree.</p>
+    </div>
+  </div>
+
+  <h3 class="blk">Module shapes</h3>
+  <div class="grid g2">
+    <div class="card">
+      <h4><code>sources/abs_ts.py</code> — ABS time series</h4>
+      <pre><span class="c"># registry: the curated list from §03</span>
+@dataclass(frozen=True)
+class SeriesSpec:
+    dataset: str                <span class="c"># "cpi"</span>
+    dataflows: tuple[str, ...]  <span class="c"># ("CPI",) or the 3 BA_SA2 flows</span>
+    key: str                    <span class="c"># "1+2+3.10001.10+20.1+50.Q+M"</span>
+    frozen: bool = False        <span class="c"># RPPI: pull once, skip staleness audit</span>
+    <span class="c"># no start_period on purpose: always the full history</span>
+
+SERIES: dict[str, SeriesSpec] = {...}
+
+def sdmx_data_url(spec) -> str
+def pull_abs_ts(data_dir, datasets=None, asof=None, force=False) -> DataFrame
+def parse_sdmx_csv(path) -> DataFrame       <span class="c"># pure, tested offline</span>
+def transform_abs_ts(data_dir, datasets=None) -> DataFrame
+def refresh_abs_ts_manifest(data_dir) -> DataFrame
+def update_abs_ts(data_dir, datasets=None, force=False, dry_run=False)</pre>
+      <p><code>parse_sdmx_csv</code> splits every <code>"code: label"</code> dimension column into <code>dim_&lt;name&gt;</code> + <code>dim_&lt;name&gt;_label</code>, maps <code>TIME_PERIOD</code> (<code>2026-Q2</code>, <code>2026-07</code>, <code>2026</code>) to an ISO <code>period_start</code>, and coerces <code>OBS_VALUE</code> to float. Raises on zero rows, per repo rule.</p>
+    </div>
+    <div class="card">
+      <h4><code>sources/rba.py</code> — RBA statistical tables</h4>
+      <pre>TABLES = {
+  "rba_cash_rate":     "f1.1",
+  "rba_lending_rates": "f5",
+  "rba_rate_changes":  "a2",
+}
+def rba_csv_url(table) -> str
+def pull_rba(data_dir, tables=None, asof=None, force=False)
+def parse_rba_csv(path) -> DataFrame        <span class="c"># header-block aware, pure</span>
+def transform_rba(data_dir, tables=None)
+def refresh_rba_manifest(data_dir)
+def update_rba(data_dir, tables=None, force=False, dry_run=False)</pre>
+      <p><code>parse_rba_csv</code> melts the wide table to long: one row per <code>(date, series_id)</code> with the title/description/frequency/units carried as columns, so both sources land in the <strong>same normalized shape</strong> (§05). Same snapshot-dedupe logic; the shared bit (<code>latest_manifest_sha</code>, <code>write_snapshot_if_changed</code>) goes in <code>core/snapshot.py</code>.</p>
+    </div>
+  </div>
+
+  <h3 class="blk">Touch points in existing code</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>File</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td class="mono nw">core/paths.py</td><td>Add <code>abs_ts_dir</code>, <code>rba_dir</code>, <code>abs_ts_manifest</code>, <code>rba_manifest</code>; extend <code>ensure_base_dirs</code>. Manifest file names: <code>abs_ts_manifest.csv</code>, <code>rba_manifest.csv</code> (one manifest per source, <code>dataset</code> column distinguishes series — same as today's schema).</td></tr>
+      <tr><td class="mono nw">core/snapshot.py <span class="pill grey">new</span></td><td><code>latest_manifest_sha(manifest, dataset)</code>, <code>write_snapshot_if_changed(df, path, manifest, …)</code> — the dedupe used by both new sources. Uses existing <code>atomic_write_csv</code> and <code>file_sha256</code>.</td></tr>
+      <tr><td class="mono nw">cli.py</td><td>Two new command groups mirroring <code>abs</code>: <code>abs-ts pull|transform|manifest|update [--dataset X …] [--force] [--dry-run]</code> and <code>rba …</code>. Thin dispatch only.</td></tr>
+      <tr><td class="mono nw">__init__.py</td><td>Export <code>update_abs_ts</code>, <code>update_rba</code>.</td></tr>
+      <tr><td class="mono nw">sinks/databricks.py</td><td><strong>Untouched.</strong> The Databricks project has ended; the new sources are CSV-only like the Census source. (If the sink is ever revived, the <code>asof=</code> partition label needs one regex and a core-column drift rule — noted in AGENTS.md, not built.)</td></tr>
+      <tr><td class="mono nw">audit.py</td><td>Add the two sources to the summary (latest asof per dataset, rows).</td></tr>
+      <tr><td class="mono nw">scripts/</td><td>Add <code>abs-ts update</code> + <code>rba update</code> to the update-and-push script next to <code>nswgov</code>/<code>rentboard</code>; they are cheap enough to run on every weekly refresh. <code>refresh_dual_pipeline.sh</code> (Databricks) is left alone.</td></tr>
+      <tr><td class="mono nw">AGENTS.md, README.md</td><td>Document both sources, the snapshot contract, the registry, the RPPI/CPI_M gotchas.</td></tr>
+      <tr><td class="mono nw">pyproject.toml</td><td>No new runtime deps — <code>requests</code> + <code>pandas</code> suffice. (Considered <code>sdmx1</code>/<code>pandasdmx</code>; rejected: heavy, and the CSV endpoint makes them unnecessary.)</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="contract">
+  <h2><span class="snum">05</span>Data contract</h2>
+  <p class="sec-sub">One tidy long-format shape for all eleven datasets, so downstream can union them and pivot as it likes.</p>
+
+  <pre>data/raw/abs_ts/&lt;dataset&gt;/asof=YYYY-MM-DD.csv          <span class="c"># API response, verbatim</span>
+data/raw/rba/&lt;dataset&gt;/asof=YYYY-MM-DD.csv
+data/normalized/abs_ts/&lt;dataset&gt;/asof=YYYY-MM-DD.csv   <span class="c"># only when content changed</span>
+data/normalized/rba/&lt;dataset&gt;/asof=YYYY-MM-DD.csv
+data/manifests/abs_ts_manifest.csv                     <span class="c"># existing 8-column schema;</span>
+data/manifests/rba_manifest.csv                        <span class="c">#   period_start/end = min/max observed period</span></pre>
+
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>column</th><th>type</th><th>meaning</th><th>ABS example</th><th>RBA example</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">source</td><td>str</td><td><code>abs_ts</code> | <code>rba</code></td><td class="mono">abs_ts</td><td class="mono">rba</td></tr>
+      <tr><td class="mono">dataset</td><td>str</td><td>registry key</td><td class="mono">cpi</td><td class="mono">rba_lending_rates</td></tr>
+      <tr><td class="mono">series_id</td><td>str</td><td>stable id for one line on a chart: ABS = dataflow + full key of that row; RBA = the published Series ID</td><td class="mono">CPI.1.10001.20.1.Q</td><td class="mono">FILRHLBVS</td></tr>
+      <tr><td class="mono">series_label</td><td>str</td><td>human label, joined dimension labels / RBA title</td><td class="mono">Index numbers · All groups CPI · Seasonally Adjusted · Sydney</td><td class="mono">Lending rates; Housing loans; Banks; Variable; Standard; Owner-occupier</td></tr>
+      <tr><td class="mono">freq</td><td>str</td><td><code>M</code> | <code>Q</code> | <code>A</code> | <code>E</code> (event)</td><td class="mono">Q</td><td class="mono">M</td></tr>
+      <tr><td class="mono">time_period</td><td>str</td><td>as published</td><td class="mono">2026-Q2</td><td class="mono">31-Aug-2026</td></tr>
+      <tr><td class="mono">period_start</td><td>date</td><td>ISO first day of the period (join key)</td><td class="mono">2026-04-01</td><td class="mono">2026-08-01</td></tr>
+      <tr><td class="mono">value</td><td>float</td><td><code>OBS_VALUE</code> scaled by <code>UNIT_MULT</code>? — <strong>no</strong>: stored as published; <code>unit_mult</code> kept beside it</td><td class="mono">100.32</td><td class="mono">8.79</td></tr>
+      <tr><td class="mono">unit, unit_mult</td><td>str, int</td><td>e.g. <code>IN</code>/0, <code>AUD</code>/6, <code>PCT</code>/0</td><td class="mono">AUD, 3</td><td class="mono">Per cent, 0</td></tr>
+      <tr><td class="mono">obs_status</td><td>str</td><td><code>p</code> preliminary, <code>r</code> revised, blank final; RBA always blank</td><td class="mono">p</td><td class="mono"></td></tr>
+      <tr><td class="mono">region</td><td>str</td><td>normalised region label when the dataflow has one (<code>NSW</code>, <code>VIC</code>, … <code>AUS</code>, <code>Greater Sydney</code>, <code>Sydney</code>); <code>AUS</code> for RBA. Region codes differ per dataflow (<code>1</code> = NSW in CL_STATE but Sydney in CL_CPI_REGION) — the label, not the code, is the join key</td><td class="mono">NSW</td><td class="mono">AUS</td></tr>
+      <tr><td class="mono">dim_*, dim_*_label</td><td>str</td><td>every remaining SDMX dimension as code + label (ragged across datasets; RBA rows leave them empty)</td><td class="mono">dim_TSEST=20</td><td class="mono"></td></tr>
+      <tr><td class="mono">base_period</td><td>str</td><td>index base where published — essential for CPI/WPI after rebases</td><td class="mono">Sep 2025 = 100.0</td><td class="mono"></td></tr>
+      <tr><td class="mono">asof</td><td>date</td><td>vintage = snapshot date</td><td class="mono">2026-09-21</td><td class="mono">2026-09-21</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note-box">Because <code>dim_*</code> columns are ragged across datasets, the contract test pins the <strong>fixed core columns</strong> (everything above except <code>dim_*</code>) and allows extra <code>dim_</code>-prefixed columns, rather than pinning an exact list per dataset the way nswgov/rentboard do. Alternatively, pack the dims into one JSON column — simpler contract, worse ergonomics in pandas/SQL. Flag if you prefer that.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="steps">
+  <h2><span class="snum">06</span>Implementation steps</h2>
+  <p class="sec-sub">Ordered so that every step leaves the repo green. Estimated at one focused day of build plus a live verification run.</p>
+  <div class="chk">
+    <div class="chk-row"><input type="checkbox" disabled><div><div class="chk-main">0 · Rebase <code>abs-data</code> onto <code>master</code>; resolve cli/__init__/AGENTS/README/.gitignore; <code>uv sync</code>; <code>uv run pytest</code> green.</div><div class="chk-sub">Keeps the Census source; picks up the nswgov bulk-archive fix. The Databricks sink comes along but is not touched.</div></div><span class="pill grey chk-when">first</span></div>
+    <div class="chk-row"><input type="checkbox" disabled><div><div class="chk-main">1 · <code>core/snapshot.py</code> + paths additions + tests.</div><div class="chk-sub">Pure functions; tests use a temp data dir and a hand-written manifest.</div></div><span class="pill grey chk-when">core</span></div>
+    <div class="chk-row"><input type="checkbox" disabled><div><div class="chk-main">2 · <code>sources/abs_ts.py</code>: registry, URL builder, <code>parse_sdmx_csv</code>, pull, transform, manifest, update.</div><div class="chk-sub">Capture today's live responses into <code>tests/fixtures/abs_ts/*.csv</code> (small: 10–600 rows each) so parse tests run offline. Include a 404 <code>NoRecordsFound</code> fixture.</div></div><span class="pill grey chk-when">source 1</span></div>
+    <div class="chk-row"><input type="checkbox" disabled><div><div class="chk-main">3 · <code>sources/rba.py</code>: table map, <code>parse_rba_csv</code>, pull, transform, manifest, update.</div><div class="chk-sub">Fixtures: the header block + last ~24 rows of F1.1, F5, A2. Test the "Series ID row locates columns" logic and the pre-1990 range text handling.</div></div><span class="pill grey chk-when">source 2</span></div>
+    <div class="chk-row"><input type="checkbox" disabled><div><div class="chk-main">4 · CLI groups <code>abs-ts</code>, <code>rba</code>; <code>__init__</code> exports; <code>audit.py</code>.</div><div class="chk-sub"><code>--dataset</code> repeatable so one series can be refreshed alone; <code>--asof</code> override for backfilling a raw file pulled earlier.</div></div><span class="pill grey chk-when">wiring</span></div>
+    <div class="chk-row"><input type="checkbox" disabled><div><div class="chk-main">5 · Live run: <code>uv run propertyiq-getdata abs-ts update --data-dir data</code>, then <code>rba update</code>; run twice, confirm the second run writes nothing.</div><div class="chk-sub">This is where the last <span class="pill amber">refine</span> key (approvals 120/130) gets pinned against the codelist, and where the earliest-period assertions in the catalogue are confirmed against the live pull.</div></div><span class="pill grey chk-when">verify</span></div>
+    <div class="chk-row"><input type="checkbox" disabled><div><div class="chk-main">6 · Add both updates to the weekly update-and-push script; run it once end to end (update → Drive sync).</div><div class="chk-sub">Confirms the new dirs sync and the second weekly run is a no-op when the ABS has not released.</div></div><span class="pill grey chk-when">schedule</span></div>
+    <div class="chk-row"><input type="checkbox" disabled><div><div class="chk-main">7 · AGENTS.md / README: sources table, contract, registry, gotchas. Then <code>/no-mistakes</code> → PR.</div><div class="chk-sub">One PR for everything; the two sources are independent enough to review file by file.</div></div><span class="pill grey chk-when">docs · ship</span></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="tests">
+  <h2><span class="snum">07</span>Tests &amp; verification</h2>
+  <div class="grid g2">
+    <div class="card"><h4>Offline (pytest, always)</h4>
+      <ul class="list-clean">
+        <li><code>test_abs_ts_parse</code>: fixture → expected columns, <code>period_start</code> for Q/M/A, label split, float coercion, <code>base_period</code> survives.</li>
+        <li><code>test_abs_ts_key_builder</code>: <code>SeriesSpec</code> → exact URL string for each registry entry (pins the keys so a typo is a test failure, not a 404 in prod).</li>
+        <li><code>test_snapshot_dedupe</code>: identical content → no new file, no new manifest row; changed content → both.</li>
+        <li><code>test_zero_rows_raises</code>: 404/<code>NoRecordsFound</code> body → <code>RuntimeError("ZERO rows …")</code>.</li>
+        <li><code>test_rba_parse</code>: header-block detection, Series-ID column keys, date parse, range-text → NaN.</li>
+        <li><code>test_contract_outputs</code> (extend existing): partition naming <code>asof=YYYY-MM-DD.csv</code>, manifest columns.</li>
+        <li><code>test_registry</code>: no <code>start_period</code>, no region filter in any key (every key's REGION position is empty), key dimension count matches the cached DSD for each dataflow.</li>
+      </ul></div>
+    <div class="card"><h4>Live (manual, once per build)</h4>
+      <pre>uv run propertyiq-getdata abs-ts update --data-dir data
+uv run propertyiq-getdata rba update --data-dir data
+uv run propertyiq-getdata audit --data-dir data
+<span class="c"># idempotency: second run must print 0 new partitions</span>
+uv run propertyiq-getdata abs-ts update --data-dir data
+<span class="c"># spot check against the ABS page you linked:</span>
+<span class="c">#   NSW mean price 2026-Q2 in dwelling_values must equal</span>
+<span class="c">#   the Total Value of Dwellings release headline for NSW,</span>
+<span class="c">#   and every dataset must show 9 regions (8 states + AUS)</span></pre>
+      <p class="one">A <code>@pytest.mark.live</code> smoke test (skipped by default) that hits one tiny endpoint — <code>ERP_Q</code>, 18 rows — is worth keeping so a future API move is caught by <code>uv run pytest -m live</code> rather than by a broken cron.</p></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="risks">
+  <h2><span class="snum">08</span>Risks &amp; failure modes</h2>
+  <div class="grid g2">
+    <div class="callout warn"><h4>Dataflow version bumps rebase indexes</h4><p><code>CPI</code> went 1.x → 2.0.0 with a new base (Sep-2025=100). We reference dataflows by id without version, so a bump is transparent to the pull — but every historical value changes. The snapshot model handles it (new vintage, old vintage kept); downstream must use <code>base_period</code> or compute % changes rather than joining raw index levels across vintages. Same class of issue: <code>BA_SA2</code> is "from July 2021 onwards" — the registry stitches <code>BA_SA2_201116</code> + <code>BA_SA2_2016-21</code> + <code>BA_SA2</code> for 2011→ history; a future ASGS edition will add a fourth.</p></div>
+    <div class="callout warn"><h4>Series get discontinued or change frequency without notice</h4><p>Seen today: <code>RPPI</code> ended 2021-Q4, <code>CPI_M</code> ended 2025-09 (absorbed into <code>CPI</code> monthly), <code>LEND_HOUSING</code> is quarterly not monthly. Mitigation: the zero-rows raise, plus an audit warning when a dataset's max <code>period_start</code> is older than 2× its frequency (e.g. a monthly series with nothing for 60 days).</p></div>
+    <div class="callout warn"><h4>API is labelled "beta"; no SLA, no documented rate limit</h4><p>It has been stable for years and the same host serves ABS Data Explorer. Keep it to one request per dataset, ≤ 12 requests per run, with the same retry/backoff pattern <code>nswgov</code> uses. The raw snapshot means a parse bug never requires re-hitting the API.</p></div>
+    <div class="callout warn"><h4>RBA CSV layout is convention, not schema</h4><p>Header-row count has been stable but the title text is edited occasionally. Keying columns by the <code>Series ID</code> row (not by title) and asserting the expected IDs exist keeps this robust; a missing ID raises with the list of IDs found.</p></div>
+    <div class="callout"><h4>Backwards compatibility</h4><p>Additive only. No existing partition, manifest, CLI command or sink changes. The Census <code>abs</code> source keeps its name and CLI. Drive sync (<code>scripts/</code> rclone) picks the new dirs up automatically because it syncs <code>data/</code> wholesale.</p></div>
+    <div class="callout"><h4>What this does <em>not</em> solve</h4><p>Postcode-level economics. Every series here is state / capital-city level and joins the property tables on time. Sub-state (SA2/SA4) approvals and population are a follow-up needing an ASGS→postcode correspondence — see D5.</p></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="decide">
+  <h2><span class="snum">09</span>Decisions — resolved 2026-09-21</h2>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>#</th><th>Decision</th><th>Outcome</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">D1</td><td>Partition strategy</td><td><strong>A — snapshot per release</strong>, <code>asof=YYYY-MM-DD.csv</code>, deduped by sha256 against the manifest.</td></tr>
+      <tr><td class="mono">D2</td><td>Registry scope</td><td>The 11 core datasets: dwelling_values, dwelling_medians, cpi, labour_force, wpi, lending_housing, building_approvals, population, rba_cash_rate, rba_lending_rates, rba_rate_changes. RPPI backfill, JV and building activity deferred (one-line registry additions later).</td></tr>
+      <tr><td class="mono">D3</td><td>Naming</td><td><code>sources/abs_ts.py</code> + <code>sources/rba.py</code>; CLI groups <code>abs-ts</code> and <code>rba</code>; manifests <code>abs_ts_manifest.csv</code>, <code>rba_manifest.csv</code>.</td></tr>
+      <tr><td class="mono">D4</td><td>Measure scope</td><td>Curated headline measures per dataflow (keys in §03), <strong>region never filtered</strong>, full history always.</td></tr>
+      <tr><td class="mono">D5</td><td>Geography</td><td>State / territory / GCCSA level only. SA2 + postcode correspondence is a follow-up.</td></tr>
+      <tr><td class="mono">—</td><td>Databricks</td><td>Out of scope; that project has ended. <code>sinks/databricks.py</code> untouched.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+</div><!-- /wrap -->
+
+<footer>
+  <div class="foot-inner">
+    <p><strong>Sources.</strong> Live queries on 2026-09-21 against <code>data.api.abs.gov.au/rest/{dataflow,data}</code> for RES_DWELL_ST, RES_DWELL, CPI, CPI_M, LF, WPI, LEND_HOUSING, BA_SA2, ERP_Q, RPPI, JV, BUILDING_ACTIVITY (DSDs + CSV samples), and <code>rba.gov.au/statistics/tables/csv/{f1.1,f1,f5,a2}-data.csv</code>. Repo survey of <code>propertyiq_getdata</code> on branches <code>abs-data</code> and <code>master</code>: sources/abs.py, core/paths.py, core/manifest.py, core/io.py, cli.py, AGENTS.md.</p>
+    <p class="src">
+      abs.gov.au/statistics/economy/price-indexes-and-inflation/total-value-dwellings/latest-release ·
+      data.api.abs.gov.au/rest/dataflow/ABS ·
+      rba.gov.au/statistics/tables/
+    </p>
+  </div>
+</footer>
+
+<script>
+  (function(){
+    var btn=document.getElementById('themeBtn');
+    btn.addEventListener('click',function(){
+      var cur=document.documentElement.getAttribute('data-theme');
+      var next=cur==='dark'?'light':'dark';
+      document.documentElement.setAttribute('data-theme',next);
+      try{localStorage.setItem('s02-theme',next)}catch(e){}
+    });
+  })();
+</script>
+</body>
+</html>
