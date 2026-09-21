@@ -55,6 +55,28 @@ def manifest_summary(path: Path) -> dict[str, Any]:
     return summary
 
 
+def snapshot_summary(manifest_path: Path) -> dict[str, dict[str, Any]]:
+    """Per-dataset view of a snapshot manifest: newest asof, its rows and period span."""
+
+    if not manifest_path.exists():
+        return {}
+    manifest = pd.read_csv(manifest_path, dtype=str)
+    if manifest.empty:
+        return {}
+    manifest["asof"] = manifest["path"].str.extract(r"asof=(\d{4}-\d{2}-\d{2})\.csv$")[0]
+    summary: dict[str, dict[str, Any]] = {}
+    for dataset, group in manifest.groupby("dataset"):
+        newest = group.sort_values("asof").iloc[-1]
+        summary[str(dataset)] = {
+            "snapshots": int(group.shape[0]),
+            "latest_asof": newest["asof"],
+            "rows": int(newest["rows"]),
+            "period_start": newest["period_start"],
+            "period_end": newest["period_end"],
+        }
+    return summary
+
+
 def audit_outputs(data_dir: str | Path | None = None) -> dict[str, Any]:
     paths = get_paths(data_dir)
     return {
@@ -69,6 +91,14 @@ def audit_outputs(data_dir: str | Path | None = None) -> dict[str, Any]:
         },
         "abs": {
             "manifest": manifest_summary(paths.abs_poa_manifest),
+        },
+        "abs_ts": {
+            "manifest": manifest_summary(paths.abs_ts_manifest),
+            "datasets": snapshot_summary(paths.abs_ts_manifest),
+        },
+        "rba": {
+            "manifest": manifest_summary(paths.rba_manifest),
+            "datasets": snapshot_summary(paths.rba_manifest),
         },
     }
 

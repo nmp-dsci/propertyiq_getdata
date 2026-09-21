@@ -37,3 +37,5 @@ include = ["propertyiq_getdata*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["live: hits a real upstream API; skipped by default, run with `pytest -m live`"]
+addopts = "-m 'not live'"

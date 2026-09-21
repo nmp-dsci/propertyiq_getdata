@@ -39,6 +39,14 @@ class PipelinePaths:
         return self.data_dir / "normalized" / "abs" / "poa"
 
     @property
+    def abs_ts_dir(self) -> Path:
+        return self.data_dir / "normalized" / "abs_ts"
+
+    @property
+    def rba_dir(self) -> Path:
+        return self.data_dir / "normalized" / "rba"
+
+    @property
     def nswgov_manifest(self) -> Path:
         return self.manifests_dir / "nswgov_sales_manifest.csv"
 
@@ -49,6 +57,14 @@ class PipelinePaths:
     @property
     def abs_poa_manifest(self) -> Path:
         return self.manifests_dir / "abs_poa_manifest.csv"
+
+    @property
+    def abs_ts_manifest(self) -> Path:
+        return self.manifests_dir / "abs_ts_manifest.csv"
+
+    @property
+    def rba_manifest(self) -> Path:
+        return self.manifests_dir / "rba_manifest.csv"
 
     def raw_source_dir(self, sourceid: str) -> Path:
         return self.data_dir / "raw" / sourceid
@@ -64,6 +80,8 @@ class PipelinePaths:
         self.raw_source_dir("nswgov").mkdir(parents=True, exist_ok=True)
         self.raw_source_dir("rentboard").mkdir(parents=True, exist_ok=True)
         self.raw_source_dir("abs").mkdir(parents=True, exist_ok=True)
+        self.raw_source_dir("abs_ts").mkdir(parents=True, exist_ok=True)
+        self.raw_source_dir("rba").mkdir(parents=True, exist_ok=True)
         self.interim_source_dir("nswgov").mkdir(parents=True, exist_ok=True)
         self.interim_source_dir("rentboard").mkdir(parents=True, exist_ok=True)
         self.interim_source_dir("abs").mkdir(parents=True, exist_ok=True)
@@ -71,6 +89,8 @@ class PipelinePaths:
         self.nswgov_sales_dir.mkdir(parents=True, exist_ok=True)
         self.rentboard_lodgements_dir.mkdir(parents=True, exist_ok=True)
         self.abs_poa_dir.mkdir(parents=True, exist_ok=True)
+        self.abs_ts_dir.mkdir(parents=True, exist_ok=True)
+        self.rba_dir.mkdir(parents=True, exist_ok=True)
 
 
 def resolve_data_dir(data_dir: str | os.PathLike[str] | None = None) -> Path:
