@@ -1,6 +1,6 @@
 # propertyiq_getdata
 
-Collection-only ETL for NSW property data sources:
+ETL for NSW property data and Australian economic series, landed in the central Postgres:
 
 - NSW Valuer General property sales (`nswgov`)
 - NSW rental bond lodgements (`rentboard`)
@@ -88,13 +88,35 @@ uv run propertyiq-getdata nswgov migrate-legacy --data-dir data
 uv run propertyiq-getdata rentboard migrate-legacy --data-dir data
 ```
 
-The monolith CSVs are also the feed for the sibling `data-qa-agent` project,
-which ingests them with dlt and builds dbt marts in Postgres:
+The monolith CSVs (`export-legacy`) are a legacy shape kept for backwards
+compatibility only. The supported feed for other apps is the central Postgres.
+
+## Central Postgres
+
+`db` lands every manifest partition in database `propertyiq` on the
+[nmp-central-ai](../nmp-central-ai/PLATFORM.md) Postgres and builds a clean,
+typed **`staging`** layer with dbt. Apps import it over `postgres_fdw` and build
+their own marts; this repo publishes no marts (plan
+`.lavish/s03_db-pipeline-dbt-central-postgres-plan.html`).
+
+| schema | tables | note |
+|---|---|---|
+| `raw` | `nswgov_sales`, `rentboard_lodgements`, `abs_ts_<dataset>` ×8, `rba_<table>` ×3 | verbatim text landing + `_partition/_sha256/_loaded_at`; owner only |
+| `staging` | `property_sales`, `property_rent`, `econ_series`, `econ_series_vintages`, `econ_headline_series`, `geo_postcode` | the consumer contract; readable by `propertyiq_ro` |
+| `meta` | `load_state`, `pipeline_runs` | what is loaded, when, from which sha256 |
 
 ```bash
-uv run propertyiq-getdata nswgov export-legacy --data-dir data
-uv run propertyiq-getdata rentboard export-legacy --data-dir data
+make -C ../nmp-central-ai db-init                 # once: role + database from registry/projects.yaml (P7)
+make -C ../nmp-central-ai db-urls                 # copy the P7 block into ./.env
+uv sync --extra db
+uv run --env-file .env propertyiq-getdata db init             # once
+uv run --env-file .env propertyiq-getdata db update --data-dir data
 ```
+
+`db update` is incremental (only partitions whose manifest sha256 changed are
+copied), takes about a minute for the full 6.6 M rows, and records itself in
+`meta.pipeline_runs`. Browse the result in DbGate (`make -C ../nmp-central-ai
+db-ui`, http://127.0.0.1:5050, connection `propertyiq`). Details in AGENTS.md.
 
 ## Publishing to Databricks
 
@@ -288,10 +310,12 @@ propertyiq_getdata/
 │   └── rba.py             #   RBA statistical tables (interest rates)
 ├── sinks/                 # one module per publish target (counterpart of sources/)
 │   └── databricks.py      #   updates-only Parquet -> Unity Catalog volume
+├── db/                    # central Postgres: manifests -> raw (COPY), dbt -> staging
 ├── audit.py               # cross-source output summary / integrity check
 └── diagnostics.py         # ad-hoc comparison/analysis helpers
+dbt/                       # dbt project: staging models, seeds, tests
 tests/                     # contract + per-source regression tests
-scripts/                   # Drive sync, update-and-push, dual-pipeline refresh
+scripts/                   # Drive sync, update-and-push, econ headline seed
 ```
 
 Sources pull data in and write canonical CSV partitions; sinks take those
@@ -301,13 +325,12 @@ module into `sources/` modelled on `nswgov.py` (shared mechanics come from
 folders — a source's pull/extract/transform steps are functions inside its own
 module, and are exposed as CLI subcommands.
 
-The two downstream consumers are fed from the same partitions and neither
-format is legacy:
+Downstream consumers:
 
 | Consumer | Feed | Pipeline |
 |---|---|---|
-| `data-qa-agent` | monolith CSVs via `export-legacy` | dlt → dbt → Postgres marts |
-| `databricks-propertyiq` | Parquet via `publish databricks` | Auto Loader → bronze/silver/gold |
+| `data-qa-agent` | `propertyiq.staging` over `postgres_fdw` | its own dbt marts + RLS in database `dataqa` |
+| `databricks-propertyiq` (ended) | Parquet via `publish databricks` | Auto Loader → bronze/silver/gold |
 
 ## Archived Code
 

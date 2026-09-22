@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "propertyiq-getdata"
 version = "0.1.0"
-description = "Collection-only ETL for NSW property data sources."
+description = "ETL for NSW property data and Australian economic series, landed in the central Postgres."
 requires-python = ">=3.10"
 dependencies = [
   "beautifulsoup4",
@@ -17,6 +17,15 @@ dependencies = [
   "pandas",
   "pyarrow>=25.0.1",
   "requests",
+]
+
+[project.optional-dependencies]
+# `propertyiq-getdata db ...`: the central Postgres loader and the dbt project.
+# Optional so a scrape-only install stays light: `uv sync --extra db`.
+db = [
+  "psycopg[binary]>=3.2",
+  "dbt-core>=1.9",
+  "dbt-postgres>=1.9",
 ]
 
 # `python -m propertyiq_getdata ...` still works; this exposes the same CLI as a

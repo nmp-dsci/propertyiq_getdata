@@ -1,0 +1,184 @@
+version: 2
+
+# `staging` is the contract other apps import over postgres_fdw. Column names
+# here are frozen: a rename is a migration for every consumer.
+
+models:
+  - name: stg_property_sales
+    description: >
+      Record-grain NSW residential sales. Physical table staging.property_sales.
+      One row per sale, cleaned and typed from raw.nswgov_sales (dates parsed,
+      postcode normalised, non-market transfers filtered, house/unit derived).
+      The clean, verified mirror of the raw landing, kept as wide as relevant
+      rather than a curated subset. ~3M rows: always filter by postcode and/or
+      sale_month first. Consumers build their own aggregates (e.g.
+      data-qa-agent marts.property_sales) from this table.
+    columns:
+      - name: sale_id
+        description: Surrogate key, unique per row (property_id alone isn't unique — split/fractional-interest sales share it). Stable per build, not a business key.
+        data_tests: [not_null, unique]
+      - name: property_id
+        description: NSW Valuer-General property identifier. Not unique per row — see sale_id.
+      - name: dealing_no
+        description: Land Registry dealing number of the transfer, where recorded. Null when blank in the source.
+      - name: suburb
+        description: Suburb name — a label, not the join key (postcode<->suburb is not 1:1 in this data).
+      - name: postcode
+        description: Postcode. Join key across sales/rent (with property_type and sale_month) and to staging.geo_postcode.
+        data_tests: [not_null]
+      - name: property_type
+        description: "'house' or 'unit', derived from strata_no. Standardised identically to staging.property_rent.property_type so the two can be joined."
+        data_tests: [not_null]
+      - name: sale_date
+        description: Full contract date.
+      - name: sale_year
+        description: Calendar year of sale_date.
+      - name: sale_month
+        description: First-of-month date, sale_date truncated to month. Join key across sales/rent (with postcode and property_type).
+        data_tests: [not_null]
+      - name: settle_date
+        description: Settlement date where the source recorded a valid YYYYMMDD; null otherwise.
+      - name: sale_price
+        description: Sale price (AUD). Filtered to $10,000-$8,000,000 to exclude non-market transfers (see model SQL comments).
+        data_tests: [not_null]
+      - name: area_sqm
+        description: "Land/property area in square metres, STANDARDISED across units: source hectare values (area_type 'H') are converted to sqm (x10,000), metre values ('M') kept as-is. Null if missing, unparseable, or the unit is unknown."
+      - name: area_band
+        description: "Standardised size band over area_sqm: '<400', '400-700', '700-1000', '1000-5000', or '5000+' sqm. Null when area_sqm is null."
+      - name: area_type
+        description: "Source unit for the raw area: 'H' (hectares) or 'M' (square metres)."
+      - name: zoning
+        description: NSW planning zone code (e.g. R2, RU5, RU2).
+      - name: house_no
+        description: Street number.
+      - name: street_name
+        description: Street name.
+      - name: unit_no
+        description: Unit/lot number, where applicable.
+      - name: prop_name
+        description: Property name, where the source recorded one.
+
+  - name: stg_property_rent
+    description: >
+      Record-grain NSW rental bond lodgements. Physical table
+      staging.property_rent. One row per bond, cleaned and typed from
+      raw.rentboard_lodgements (all 5 raw columns are used). ~3M rows: always
+      filter by postcode and/or rent_month first. No suburb in the source —
+      resolve suburbs through staging.property_sales or staging.geo_postcode.
+    columns:
+      - name: rent_id
+        description: Surrogate key, unique per row (the source has no natural id, and two distinct bonds can share every other value). Stable per build, not a business key.
+        data_tests: [not_null, unique]
+      - name: rent_date
+        description: Full lodgement date.
+      - name: rent_year
+        description: Calendar year of rent_date.
+      - name: rent_month
+        description: First-of-month date. Join key across sales/rent (with postcode and property_type).
+        data_tests: [not_null]
+      - name: postcode
+        description: Postcode. Join key across sales/rent and to staging.geo_postcode.
+        data_tests: [not_null]
+      - name: property_type_code
+        description: Raw source code (H/T/F/U/O) before standardisation.
+      - name: property_type
+        description: "'house' (House/Townhouse) or 'unit' (Flat/Unit/Other). Standardised identically to staging.property_sales.property_type."
+        data_tests: [not_null]
+      - name: bedrooms
+        description: Bedroom count, where the source value was numeric.
+      - name: bedroom_band
+        description: "'0','1','2','3','4','5+', or 'unknown' (null bedrooms)."
+      - name: weekly_rent
+        description: Weekly rent (AUD). Positive values only.
+        data_tests: [not_null]
+
+  - name: stg_econ_series
+    description: >
+      Physical table staging.econ_series. The current statement of every ABS /
+      RBA economic series this repo collects (dwelling values and medians, CPI,
+      labour force, WPI, housing lending, building approvals, population, RBA
+      cash rate, housing lending rates, cash-rate decisions), long format: one
+      row per (series_id, period_start), newest vintage per dataset. Pivot to
+      wide by joining staging.econ_headline_series on series_id. Regions are
+      states/territories, AUS, capital cities (CPI) and GCCSA areas (medians).
+    columns:
+      - name: series_id
+        description: Stable publisher key. ABS = dataflow + full SDMX key (e.g. LF.M13.3.1599.20.1.M); RBA = the table's Series ID (e.g. FIRMMCRT).
+        data_tests: [not_null]
+      - name: dataset
+        description: propertyiq dataset name (cpi, labour_force, rba_cash_rate, ...).
+        data_tests: [not_null]
+      - name: series_label
+        description: Human label built from the dimension labels.
+      - name: dataflow
+        description: ABS dataflow id or RBA table id (f1.1, f5, a2).
+      - name: freq
+        description: "Q, M, A, D, or E (event-dated, RBA decisions)."
+      - name: time_period
+        description: Publisher's period string as received (2026-Q2, 2026-07, 31/08/2026, 06-May-2026).
+      - name: period_start
+        description: First day of the period (date). Join key with sale_month/rent_month via period_month.
+        data_tests: [not_null]
+      - name: period_month
+        description: period_start truncated to month.
+      - name: period_quarter
+        description: period_start truncated to quarter.
+      - name: value
+        description: Numeric observation. Null where the publisher printed text (e.g. an RBA rate range) — see obs_comment.
+      - name: unit
+        description: Publisher unit code/label (IN, NUM, $m, Per cent, ...).
+      - name: unit_mult
+        description: Power-of-ten multiplier from SDMX (0, 3, 6). Null for RBA.
+      - name: obs_status
+        description: SDMX observation status flag (r = revised, p = preliminary, ...).
+      - name: obs_comment
+        description: Free text the publisher attached to the observation.
+      - name: region
+        description: Short region key — AUS, NSW, VIC, ..., or the published label for cities/GCCSA areas.
+      - name: base_period
+        description: Index base (e.g. 'Sep 2025 = 100.0') for index series.
+      - name: asof
+        description: Vintage date (the day the snapshot was captured).
+        data_tests: [not_null]
+      - name: dims
+        description: jsonb of every SDMX dimension code and label for the series (measure, tsest, region, ...). Empty for RBA.
+
+  - name: stg_econ_series_vintages
+    description: >
+      Physical table staging.econ_series_vintages. Same shape as
+      staging.econ_series with every vintage kept: one row per (series_id,
+      period_start, asof). Use it to see revisions or reproduce a past release.
+    columns:
+      - name: series_id
+        data_tests: [not_null]
+      - name: period_start
+        data_tests: [not_null]
+      - name: asof
+        data_tests: [not_null]
+
+seeds:
+  - name: geo_postcode
+    description: >
+      Postcode -> SA2/SA3/SA4/GCCSA/state reference (ABS ASGS), shared geography
+      for every property consumer. Physical table staging.geo_postcode.
+    columns:
+      - name: postcode
+        data_tests: [not_null, unique]
+  - name: econ_headline_series
+    description: >
+      Curated map from series_id to a headline measure name, so consumers pivot
+      staging.econ_series without knowing SDMX keys. Regenerated by
+      scripts/econ_headline_seed.py from the raw tables; the rules there are the
+      curation. Physical table staging.econ_headline_series.
+    columns:
+      - name: series_id
+        data_tests: [not_null, unique]
+      - name: measure
+        description: "e.g. unemployment_rate_pct, mean_dwelling_price_k, cash_rate_target_pct, approvals_total_n."
+        data_tests: [not_null]
+      - name: region
+        data_tests: [not_null]
+      - name: adjustment
+        description: "original | sa | trend"
+        data_tests:
+          - accepted_values: {values: ['original', 'sa', 'trend']}
