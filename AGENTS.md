@@ -1,9 +1,11 @@
 # AGENTS.md — propertyiq_getdata
 
-Collection-only ETL for NSW property data sources. It fetches public source
-files, normalizes each new period independently, and writes period-partitioned
-CSVs plus manifests. **Downstream cleaning, joining, and database loading belongs
-in the separate database project — not here.**
+ETL for NSW property data and Australian economic series. It fetches public
+source files, normalizes each new period independently, writes
+period-partitioned CSVs plus manifests, and lands them in the central Postgres
+(`db update`: manifests → `raw`, dbt → `staging`). **Cleaning to record grain
+belongs here; app-shaped marts, joins for a product and access control belong
+to the consuming app** (see "Central Postgres").
 
 > **Actively maintained:** the `propertyiq_getdata/` package (the `nswgov`,
 > `rentboard`, `abs`, `abs_ts` and `rba` sources). Everything historical (old REA/Domain/auhouse
@@ -36,11 +38,19 @@ propertyiq_getdata/          # the package — the pipeline
 │   ├── abs_ts.py            #   ABS Data API time series (dwellings, CPI, labour, wages, lending, approvals, ERP)
 │   └── rba.py               #   RBA statistical tables (cash rate, lending rates, rate changes)
 ├── sinks/                   # one module per publish target (counterpart of sources/)
-│   └── databricks.py        #   updates-only Parquet -> Unity Catalog volume
+│   └── databricks.py        #   updates-only Parquet -> Unity Catalog volume (project ended; kept)
+├── db/                      # central Postgres: manifests -> raw (COPY), dbt -> staging
+│   ├── registry.py          #   LoadSpec per manifest dataset -> raw.<source>_<dataset>
+│   ├── load.py              #   incremental COPY loader driven by manifest sha256 + meta.load_state
+│   ├── schema.py            #   `db init` DDL: schemas, meta tables, grants
+│   ├── dbt.py               #   URL -> DBT_* env, runs the dbt CLI, reads run_results.json
+│   ├── pipeline.py          #   the `db` stages: init | load | dbt | update | smoke | export-fixture
+│   └── connection.py        #   PROPERTYIQ_*_DATABASE_URL -> psycopg connection (no fallback)
 ├── audit.py                 # cross-source output summary / integrity check
 └── diagnostics.py           # ad-hoc comparison/analysis helpers
-tests/                       # contract + per-source regression tests
-scripts/                     # rclone Drive sync, update-and-push, dual-pipeline refresh, Parquet inspection
+dbt/                         # the dbt project (staging only) — see "Central Postgres" below
+tests/                       # contract + per-source regression tests (+ tests/fixtures/db for consumers' CI)
+scripts/                     # rclone Drive sync, update-and-push, econ_headline_seed.py, Parquet inspection
 archive/                     # historical, unmaintained code — see archive/README.md
 ```
 
@@ -77,12 +87,12 @@ compatibility exports only, produced on demand by `export-legacy`.
 The data dir is resolved by `paths.resolve_data_dir`: explicit `--data-dir` >
 `PROPERTYIQ_DATA_DIR` > `DATA_DIR` > repo-local `data/`.
 
-Two downstream consumers read these outputs, and neither is legacy:
+Downstream consumers:
 
 | Consumer | Feed | Pipeline |
 |---|---|---|
-| `data-qa-agent` | monolith CSVs via `export-legacy` | dlt → dbt → Postgres marts |
-| `databricks-propertyiq` | Parquet via `publish databricks` (below) | Auto Loader → bronze/silver/gold |
+| `data-qa-agent` | `propertyiq.staging` over `postgres_fdw` (see "Central Postgres") | its own dbt marts + RLS in database `dataqa` |
+| `databricks-propertyiq` (project ended) | Parquet via `publish databricks` (below) | Auto Loader → bronze/silver/gold |
 
 ## The sources
 
@@ -170,6 +180,78 @@ region, base_period, asof`, followed by any `dim_*` columns (ragged across
 datasets; RBA has none). Downstream should take `max(asof)` per series —
 revisions and rebases produce a new vintage, never an edit of an old one.
 
+## Central Postgres (`db` command, `dbt/`)
+
+Plan of record: `.lavish/s03_db-pipeline-dbt-central-postgres-plan.html`.
+Every manifest partition is landed in database **`propertyiq`** on the
+nmp-central-ai Postgres and cleaned by dbt into **`staging`**. That is the
+whole of this repo's job in the database — **the ownership rule (D7)**:
+
+> propertyiq owns `raw` + `staging` (typed, cleaned, record-grain, app-agnostic).
+> Apps own their marts, built in *their* database from `propertyiq_staging.*`
+> foreign tables (`postgres_fdw`, role `propertyiq_ro`). There is no `marts`
+> schema here; do not add one.
+
+```text
+schema   rule                                                         who writes / reads
+raw      raw.<source>_<dataset>; every column text as the CSV header    db load        / owner only
+         (lower-cased) + _partition, _sha256, _loaded_at
+staging  staging.<domain>_<noun>, record grain; frozen column names     dbt            / owner, propertyiq_ro
+         property_sales · property_rent · econ_series ·
+         econ_series_vintages · econ_headline_series (seed) · geo_postcode (seed)
+meta     meta.load_state (partition -> sha256) · meta.pipeline_runs     db load/update / owner, propertyiq_ro
+```
+
+Connection: the P7 block of `nmp-central-ai/.db-urls.env` pasted into `./.env`
+(gitignored), used via `uv run --env-file .env`. Three variables, three roles:
+`PROPERTYIQ_ADMIN_DATABASE_URL` (nmp, `db init` only), `PROPERTYIQ_DATABASE_URL`
+(propertyiq_owner: loader + dbt), `PROPERTYIQ_RO_DATABASE_URL` (propertyiq_ro:
+consumers, `db smoke`). Never hardcode a URL or port; if the platform is down
+the CLI says so and stops — there is no local fallback (PLATFORM.md rule 1).
+
+```bash
+uv sync --extra db                                              # psycopg + dbt
+uv run --env-file .env propertyiq-getdata db init               # once: schemas, meta, grants
+uv run --env-file .env propertyiq-getdata db update --data-dir data   # load -> dbt seed/build/docs (~1 min)
+uv run --env-file .env propertyiq-getdata db load --dataset abs_ts/cpi --dry-run
+uv run --env-file .env propertyiq-getdata db load --dataset nswgov --full-refresh
+uv run --env-file .env propertyiq-getdata db dbt build
+uv run --env-file .env propertyiq-getdata db smoke              # what `make check` in nmp-central-ai runs
+uv run --env-file .env propertyiq-getdata db export-fixture     # tests/fixtures/db/propertyiq_staging.sql for consumers' CI
+```
+
+How the loader decides (`db/load.py`, pure `plan_actions` + live COPY):
+manifest sha256 ≠ `meta.load_state` → delete that `_partition` and COPY the file
+(one transaction, row count asserted against the manifest); partition gone from
+the manifest → deleted (`partition` mode: nswgov, rentboard); snapshot datasets
+(`abs_ts_*`, `rba_*`) append every `asof` vintage and never delete (D4). A CSV
+header that differs from the existing raw table is an **error**, not an ALTER.
+Blank cells land as `''`, not NULL, so the staging SQL's `coalesce(x, '') <> ''`
+idiom holds.
+
+dbt (`dbt/`): profile from `PROPERTYIQ_DATABASE_URL` (`db/dbt.py` splits it into
+`DBT_*`). `stg_property_sales` / `stg_property_rent` are the cleaning rules
+ported verbatim from data-qa-agent (`services/data-pipeline/dbt`, commit
+e48d03c) plus `dealing_no` / `settle_date`, which the partitions carry.
+`stg_econ_series` unions the 11 economic raw tables (macro `econ_union`: ragged
+`dim_*` columns folded into a `dims` jsonb), newest vintage per dataset;
+`_vintages` keeps all. `econ_headline_series` is the curated series_id → measure
+map (`unemployment_rate_pct`, `mean_dwelling_price_k`, `cash_rate_target_pct`, …)
+regenerated by `scripts/econ_headline_seed.py` — the rules in that script are
+the curation, the CSV is committed so dbt seeds offline. Pivot example:
+
+```sql
+select e.period_quarter, h.region, h.measure, e.value
+from staging.econ_series e join staging.econ_headline_series h using (series_id)
+where h.measure in ('mean_dwelling_price_k', 'unemployment_rate_pct') and h.adjustment <> 'trend';
+```
+
+Consumers: data-qa-agent imports `staging` as `propertyiq_staging` over
+`postgres_fdw` and builds its marts + RLS from it (its dlt ingest of the
+monolith CSVs is decommissioned — plan P6). Adding a staging table is a contract
+change: document it in `dbt/models/staging/_staging.yml`, and consumers re-run
+`import foreign schema`. Renaming a column is a migration for every consumer.
+
 ## Publishing to Databricks
 
 `sinks/databricks.py` (`publish_databricks`, CLI: `publish databricks`) converts
@@ -224,7 +306,8 @@ uv run propertyiq-getdata abs-ts update --data-dir data            # all 8 datas
 uv run propertyiq-getdata rba update --data-dir data
 uv run propertyiq-getdata abs-ts update --data-dir data --dataset cpi --dataset labour_force --force
 uv run propertyiq-getdata audit --data-dir data
-uv run pytest            # offline; `uv run pytest -m live` also hits the ABS API once
+uv run --env-file .env propertyiq-getdata db update --data-dir data   # -> central Postgres (see above)
+uv run pytest            # offline; `uv run --env-file .env pytest -m live` also hits the ABS API and the central DB
 ```
 
 Migration/compat: `nswgov|rentboard migrate-legacy` splits an old monolith CSV
@@ -235,7 +318,8 @@ into partitions; `export-legacy` stacks partitions back into the monolith shape;
 Dependencies are declared in `pyproject.toml` and pinned in `uv.lock` (commit
 both). Runtime: `beautifulsoup4, pandas, numpy, requests, curl-cffi, openpyxl`
 (+ `matplotlib` for `diagnostics.py`, `databricks-sdk` + `pyarrow` for
-`sinks/databricks.py`); dev group: `pytest`. Add one with `uv add <pkg>` (or
+`sinks/databricks.py`); extra `db`: `psycopg[binary], dbt-core, dbt-postgres`
+(`uv sync --extra db`); dev group: `pytest`. Add one with `uv add <pkg>` (or
 `uv add --dev <pkg>`). Note: the old `stem`/Tor dependency was only used by
 `archive/` and is no longer installed.
 

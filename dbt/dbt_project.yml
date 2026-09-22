@@ -1,0 +1,50 @@
+name: propertyiq
+version: "1.0.0"
+config-version: 2
+profile: propertyiq
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# Ownership rule (plan s03, D7): this project owns `staging` only -- the
+# typed, cleaned, record-grain layer every app imports over postgres_fdw.
+# Marts are app-shaped and live with the app (data-qa-agent's dbt builds
+# its own from propertyiq_staging.*). Do not add a marts/ folder here.
+models:
+  propertyiq:
+    staging:
+      +schema: staging
+      # Tables, not views: consumers read these over postgres_fdw, and a view
+      # over 3M-row raw text would re-run the cleaning on every remote scan.
+      +materialized: table
+      # Consumers' agents (data-qa-agent get_schema) ground the LLM in models
+      # tagged this way; keep it so this project's manifest can feed them.
+      +tags: ['agent_queryable']
+
+seeds:
+  propertyiq:
+    +schema: staging
+    geo_postcode:
+      # postcode kept as text so leading-significant codes survive dbt's type
+      # inference (a bare '2000' must not become the integer 2000).
+      +column_types:
+        postcode: text
+        sa2_name: text
+        sa3_name: text
+        sa4_name: text
+        gcc_name: text
+        state_name: text
+    econ_headline_series:
+      +column_types:
+        series_id: text
+        dataset: text
+        measure: text
+        region: text
+        adjustment: text
+        freq: text
+        unit: text
+        description: text

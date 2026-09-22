@@ -1,0 +1,44 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Landing tables written by `propertyiq-getdata db load`: one per manifest
+      dataset, every column text exactly as the CSV header (lower-cased), plus
+      _partition / _sha256 / _loaded_at from the loader. Not a published
+      interface -- consumers read `staging`.
+    schema: raw
+    loaded_at_field: _loaded_at
+    tables:
+      - name: nswgov_sales
+        description: NSW Valuer General weekly sales (.DAT B records), one row per sale. Partition = period=YYYYMMDD.
+        freshness:
+          warn_after: {count: 10, period: day}
+          error_after: {count: 21, period: day}
+      - name: rentboard_lodgements
+        description: NSW Rental Bond Board lodgements, one row per bond. Partition = year=YYYY/month=MM.
+        freshness:
+          warn_after: {count: 45, period: day}
+          error_after: {count: 90, period: day}
+      - name: abs_ts_dwelling_values
+        description: ABS Data API `dwelling_values` snapshots (all vintages). Partition = asof=YYYY-MM-DD; CORE_COLUMNS + this dataflow's dim_* columns.
+      - name: abs_ts_dwelling_medians
+        description: ABS Data API `dwelling_medians` snapshots (all vintages). Partition = asof=YYYY-MM-DD; CORE_COLUMNS + this dataflow's dim_* columns.
+      - name: abs_ts_cpi
+        description: ABS Data API `cpi` snapshots (all vintages). Partition = asof=YYYY-MM-DD; CORE_COLUMNS + this dataflow's dim_* columns.
+      - name: abs_ts_labour_force
+        description: ABS Data API `labour_force` snapshots (all vintages). Partition = asof=YYYY-MM-DD; CORE_COLUMNS + this dataflow's dim_* columns.
+      - name: abs_ts_wpi
+        description: ABS Data API `wpi` snapshots (all vintages). Partition = asof=YYYY-MM-DD; CORE_COLUMNS + this dataflow's dim_* columns.
+      - name: abs_ts_lending_housing
+        description: ABS Data API `lending_housing` snapshots (all vintages). Partition = asof=YYYY-MM-DD; CORE_COLUMNS + this dataflow's dim_* columns.
+      - name: abs_ts_building_approvals
+        description: ABS Data API `building_approvals` snapshots (all vintages). Partition = asof=YYYY-MM-DD; CORE_COLUMNS + this dataflow's dim_* columns.
+      - name: abs_ts_population
+        description: ABS Data API `population` snapshots (all vintages). Partition = asof=YYYY-MM-DD; CORE_COLUMNS + this dataflow's dim_* columns.
+      - name: rba_cash_rate
+        description: RBA statistical table `rba_cash_rate` snapshots (all vintages). Partition = asof=YYYY-MM-DD; CORE_COLUMNS only.
+      - name: rba_lending_rates
+        description: RBA statistical table `rba_lending_rates` snapshots (all vintages). Partition = asof=YYYY-MM-DD; CORE_COLUMNS only.
+      - name: rba_rate_changes
+        description: RBA statistical table `rba_rate_changes` snapshots (all vintages). Partition = asof=YYYY-MM-DD; CORE_COLUMNS only.

@@ -1,0 +1,15 @@
+propertyiq:
+  target: prod
+  outputs:
+    prod:
+      type: postgres
+      # Every value comes from PROPERTYIQ_DATABASE_URL, split into DBT_* by
+      # propertyiq_getdata/db/dbt.py -- the URL is the single source (PLATFORM.md).
+      host: "{{ env_var('DBT_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_PORT', '5432') | int }}"
+      user: "{{ env_var('DBT_USER', 'propertyiq_owner') }}"
+      password: "{{ env_var('DBT_PASSWORD', 'propertyiq_owner') }}"
+      dbname: "{{ env_var('DBT_DBNAME', 'propertyiq') }}"
+      schema: staging
+      sslmode: "{{ env_var('PGSSLMODE', 'prefer') }}"
+      threads: 4

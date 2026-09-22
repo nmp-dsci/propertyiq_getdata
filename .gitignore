@@ -13,3 +13,4 @@ dist/
 *.sqlite
 # Local data is stored outside git, currently in Google Drive.
 /data/
+.env

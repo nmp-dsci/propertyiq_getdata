@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 from .audit import print_audit
+from .db.registry import LOAD_KEYS
 from .sinks.databricks import DEFAULT_VOLUME_ROOT, publish_databricks
 from .sources.abs import (
     DEFAULT_CENSUS_YEAR,
@@ -131,6 +132,28 @@ def build_parser() -> argparse.ArgumentParser:
     add_snapshot_source("abs-ts", "Run ABS Data API time-series stages.", list(ABS_TS_SERIES))
     add_snapshot_source("rba", "Run RBA statistical-table stages.", list(RBA_TABLES))
 
+    # Central Postgres: land the manifests in raw, build staging with dbt.
+    db_select = argparse.ArgumentParser(add_help=False)
+    db_select.add_argument(
+        "--dataset",
+        action="append",
+        metavar="SOURCE[/DATASET]",
+        help=f"Restrict to a source or source/dataset (repeatable). Choices: {', '.join(LOAD_KEYS)}. Default: all.",
+    )
+    db_select.add_argument("--full-refresh", action="store_true", help="Truncate the raw table(s) and reload every partition.")
+    db_select.add_argument("--dry-run", action="store_true", help="Print the partition plan without touching the database.")
+    db = subparsers.add_parser("db", parents=[data_parent], help="Load into the central Postgres and run dbt.")
+    db_stages = db.add_subparsers(dest="stage", required=True)
+    db_stages.add_parser("init", parents=[data_parent], help="Create schemas, meta tables and grants (superuser, once).")
+    db_stages.add_parser("load", parents=[data_parent, db_select], help="Manifests -> raw (incremental by sha256).")
+    db_dbt = db_stages.add_parser("dbt", parents=[data_parent], help="Run the dbt project against staging.")
+    db_dbt.add_argument("target", nargs="?", default="all", choices=["seed", "build", "docs", "all"])
+    db_stages.add_parser("update", parents=[data_parent, db_select], help="load + dbt seed/build/docs, recorded as one run.")
+    db_stages.add_parser("smoke", parents=[data_parent], help="Zero-LLM check as the read-only role (platform `make check`).")
+    db_fixture = db_stages.add_parser("export-fixture", parents=[data_parent], help="Small staging SQL fixture for consumers' CI.")
+    db_fixture.add_argument("--out", default="tests/fixtures/db/propertyiq_staging.sql")
+    db_fixture.add_argument("--limit", type=int, default=2000)
+
     return parser
 
 
@@ -248,5 +271,25 @@ def main(argv: list[str] | None = None) -> int:
         else:
             report = update(data_dir=args.data_dir, datasets=args.dataset, asof=args.asof, force=args.force, dry_run=args.dry_run)
         print(report.to_string(index=False))
+        return 0
+    if args.command == "db":
+        from .db import export_fixture, init_db, run_dbt_stage, smoke, update_db
+        from .db.pipeline import load_db
+
+        if args.stage == "init":
+            init_db()
+        elif args.stage == "load":
+            report = load_db(data_dir=args.data_dir, datasets=args.dataset, full_refresh=args.full_refresh, dry_run=args.dry_run)
+            print(report.groupby(["table", "status"]).size().to_string())
+        elif args.stage == "dbt":
+            passed, total = run_dbt_stage(args.target)
+            print(f"dbt tests: {passed}/{total}")
+        elif args.stage == "update":
+            report = update_db(data_dir=args.data_dir, datasets=args.dataset, full_refresh=args.full_refresh, dry_run=args.dry_run)
+            print(report.groupby(["table", "status"]).size().to_string())
+        elif args.stage == "smoke":
+            return 0 if smoke() else 1
+        else:
+            print(export_fixture(args.out, limit=args.limit))
         return 0
     raise RuntimeError(f"Unhandled command: {args}")
