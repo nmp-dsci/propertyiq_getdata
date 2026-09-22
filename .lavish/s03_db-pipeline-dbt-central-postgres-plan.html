@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>db-pipeline: dbt pipeline into the central Postgres</title>
+<script>
+  (function(){
+    var t; try{t=localStorage.getItem('s03-theme')}catch(e){}
+    var mq=window.matchMedia('(prefers-color-scheme: dark)');
+    if(t!=='light'&&t!=='dark'){t=mq.matches?'dark':'light'}
+    document.documentElement.setAttribute('data-theme',t);
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#F4F6F3; --panel:#FFFFFF; --panel-2:#FAFBF9; --ink:#14181C; --ink-soft:#3E4A44;
+  --muted:#5A655D; --faint:#77837A; --line:#DDE4DC; --line-2:#C9D2C9;
+  --signal:#17876B; --signal-soft:#E4F1EC; --amber:#B26A12; --amber-soft:#F6ECDC;
+  --fail:#A8402F; --fail-soft:#F4E2DE;
+  --chip-bg:#E4F1EC; --chip-ink:#11674F; --hover:#FAFBF9;
+  --nav-bg:rgba(244,246,243,.85); --grid-line:rgba(16,22,19,.028);
+  --hero-glow:rgba(23,135,107,.07); --pre-bg:#14181C; --pre-ink:#E8ECE9;
+  --shadow:0 1px 2px rgba(16,22,19,.04),0 10px 26px -14px rgba(16,22,19,.16);
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,monospace;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  --w:1120px;
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#101511; --panel:#171E19; --panel-2:#1C2420; --ink:#E8EDE9; --ink-soft:#C3CCC5;
+  --muted:#96A29A; --faint:#71807A; --line:#242E27; --line-2:#33413A;
+  --signal:#43C29A; --signal-soft:#173428; --amber:#D19243; --amber-soft:#2A2113;
+  --fail:#E0715C; --fail-soft:#2E1A16;
+  --chip-bg:#173428; --chip-ink:#7FDDBB; --hover:#1C2420;
+  --nav-bg:rgba(16,21,17,.85); --grid-line:rgba(232,237,233,.035);
+  --hero-glow:rgba(67,194,154,.09); --pre-bg:#0B0F0C; --pre-ink:#DEE5E0;
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 26px -14px rgba(0,0,0,.55);
+}
+*,*::before,*::after{box-sizing:border-box;min-width:0}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.62;letter-spacing:-.005em;
+  background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+  background-size:34px 34px;transition:background-color .2s,color .2s}
+a{color:var(--signal);text-decoration:none}
+a:hover{text-decoration:underline;text-underline-offset:3px}
+h1,h2,h3,h4{font-weight:600;letter-spacing:-.02em;line-height:1.2;margin:0}
+:where(p,h1,h2,h3,h4,li,td,th,summary,label,button){overflow-wrap:anywhere}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
+.nav{position:sticky;top:0;z-index:50;background:var(--nav-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav-inner{max-width:var(--w);margin:0 auto;padding:11px 22px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:10px;color:var(--ink)}
+.wordmark{font-family:var(--mono);font-weight:600;font-size:15px;letter-spacing:-.02em}
+.wordmark .cursor{display:inline-block;width:.55em;height:1.02em;background:var(--signal);vertical-align:-.16em;margin:0 .12em;animation:np-blink 1.15s steps(1) infinite}
+@keyframes np-blink{50%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.wordmark .cursor{animation:none !important}}
+.brand-role{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.nav-links{display:flex;gap:13px;align-items:center;flex-wrap:wrap}
+.nav-links a{color:var(--ink-soft);font-size:13px;font-weight:500}
+.nav-links a:hover{color:var(--signal);text-decoration:none}
+.theme-toggle{font-size:14px;line-height:1;background:transparent;cursor:pointer;border:1px solid var(--line-2);border-radius:999px;width:31px;height:31px;color:var(--ink-soft);display:inline-flex;align-items:center;justify-content:center;padding:0}
+.theme-toggle:hover{border-color:var(--signal);color:var(--signal)}
+.hero{border-bottom:1px solid var(--line);background:radial-gradient(680px 320px at 85% -40%,var(--hero-glow),transparent)}
+.hero-inner{max-width:var(--w);margin:0 auto;padding:54px 22px 40px}
+.hero h1{font-size:clamp(28px,4.4vw,44px);line-height:1.1;letter-spacing:-.028em;max-width:26ch;padding-bottom:.06em}
+.hero h1 .accent{color:var(--signal)}
+.hero-sub{color:var(--muted);font-size:clamp(15px,1.8vw,17.5px);max-width:82ch;margin:16px 0 0}
+.metrics{display:grid;gap:12px;margin-top:30px;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr))}
+.met{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px;box-shadow:var(--shadow)}
+.met-n{display:block;font-family:var(--mono);font-weight:600;font-size:18px;line-height:1.3;color:var(--signal);font-variant-numeric:tabular-nums}
+.met-l{display:block;font-size:11.5px;color:var(--faint);margin-top:2px}
+.wrap{max-width:var(--w);margin:0 auto;padding:0 22px 96px}
+section{margin-top:60px;scroll-margin-top:66px}
+section>h2{font-size:clamp(21px,2.8vw,28px)}
+section>h2 .snum{font-family:var(--mono);color:var(--signal);font-size:.78em;margin-right:9px}
+.sec-sub{color:var(--muted);font-size:14.5px;max-width:88ch;margin:10px 0 0}
+h3.blk{font-size:17.5px;margin:30px 0 12px;display:flex;align-items:center;gap:9px}
+h3.blk::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--signal);flex:none}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;box-shadow:var(--shadow)}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr))}
+.card h4{font-size:15px;margin-bottom:7px;letter-spacing:-.01em}
+.card p{margin:6px 0;font-size:14px;color:var(--ink-soft)}
+.card .one{font-size:13px;color:var(--muted);font-style:italic;border-left:2px solid var(--line-2);padding-left:10px;margin-top:9px}
+.pill{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:var(--chip-bg);color:var(--chip-ink);white-space:nowrap}
+.pill.amber{background:var(--amber-soft);color:var(--amber)}
+.pill.fail{background:var(--fail-soft);color:var(--fail)}
+.pill.grey{background:var(--panel-2);color:var(--faint);border:1px solid var(--line)}
+.tag-row{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);margin-top:8px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;background:var(--panel)}
+thead th{background:var(--panel-2);text-align:left;font-weight:600;color:var(--ink);padding:11px 13px;border-bottom:1px solid var(--line-2);font-size:12.5px;vertical-align:bottom}
+td{padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-soft)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--hover)}
+td.step{font-weight:600;color:var(--ink)}
+td strong{color:var(--ink);font-weight:600}
+.mono{font-family:var(--mono);font-size:12.5px}
+.nw{white-space:nowrap}
+.callout{border-radius:12px;padding:16px 18px;border:1px solid var(--line);background:var(--panel);margin-top:14px}
+.callout.star{border-color:var(--signal);background:var(--signal-soft)}
+.callout.warn{border-color:var(--amber);background:var(--amber-soft)}
+.callout.red{border-color:var(--fail);background:var(--fail-soft)}
+.callout h4{font-size:15px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.callout p,.callout li{font-size:13.5px;color:var(--ink-soft)}
+.callout ul{margin:6px 0 0;padding-left:20px}
+.callout li{margin:4px 0}
+pre{background:var(--pre-bg);color:var(--pre-ink);border-radius:10px;padding:13px 15px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.72;margin:10px 0;border:1px solid var(--line)}
+pre .c{color:#7E9C8F}
+pre .k{color:#7FDDBB}
+code:not(pre code){font-family:var(--mono);font-size:.88em;background:var(--panel-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--ink-soft)}
+.list-clean{list-style:none;padding:0;margin:8px 0 0}
+.list-clean li{position:relative;padding-left:22px;margin:7px 0;font-size:13.5px;color:var(--ink-soft)}
+.list-clean li::before{content:"";position:absolute;left:4px;top:9px;width:6px;height:6px;border-radius:50%;background:var(--signal)}
+.list-clean.amber li::before{background:var(--amber)}
+.diagram-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px 8px;box-shadow:var(--shadow);overflow-x:auto;margin-top:12px}
+.diagram-card .mermaid{min-width:300px;display:flex;justify-content:center;font-family:var(--sans);margin-top:6px}
+.diagram-card .mermaid svg{max-width:100%;height:auto}
+.dia-cap{font-size:12.5px;color:var(--faint);text-align:center;margin:2px 0 8px}
+.chk{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;margin-top:10px}
+.chk-row{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:12px;align-items:start;padding:12px 16px;border-bottom:1px solid var(--line)}
+.chk-row:last-child{border-bottom:none}
+.chk-row:hover{background:var(--hover)}
+.chk-row input[type=checkbox]{margin-top:4px;accent-color:var(--signal);width:15px;height:15px}
+.chk-main{font-size:13.5px;color:var(--ink);font-weight:500}
+.chk-sub{font-size:12.5px;color:var(--muted);margin-top:3px;font-weight:400}
+.chk-sub code{font-size:11.5px}
+.chk-when{justify-self:end}
+footer{border-top:1px solid var(--line);margin-top:70px}
+.foot-inner{max-width:var(--w);margin:0 auto;padding:26px 22px 60px;color:var(--faint);font-size:12px}
+.src{font-family:var(--mono);font-size:11px;line-height:1.9;word-break:break-all}
+.note-box{font-size:12.5px;color:var(--muted);background:var(--panel-2);border:1px dashed var(--line-2);border-radius:9px;padding:11px 14px;margin-top:14px}
+@media print{.nav,.theme-toggle{display:none}body{background:#fff}}
+</style>
+<style>
+/* s03 additions */
+.dec{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:16px 18px;margin-top:14px}
+.dec h4{font-size:15px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.dec .did{font-family:var(--mono);font-size:11px;color:var(--signal);border:1px solid var(--signal);border-radius:6px;padding:1px 6px}
+.dec p.q{font-size:13.5px;color:var(--muted);margin:6px 0 10px}
+.opt{display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;align-items:start;padding:10px 12px;border:1px solid var(--line);border-radius:9px;margin:6px 0;cursor:pointer}
+.opt:hover{background:var(--hover)}
+.opt input{margin-top:4px;accent-color:var(--signal)}
+.opt .ol{font-size:13.5px;color:var(--ink);font-weight:500}
+.opt .os{font-size:12.5px;color:var(--muted);margin-top:2px}
+.opt .rec{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--chip-ink);background:var(--chip-bg);border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle}
+.dec-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.btn{font-family:var(--sans);font-size:13px;font-weight:600;border-radius:8px;padding:7px 13px;border:1px solid var(--signal);background:var(--signal);color:#fff;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--signal)}
+.btn:hover{filter:brightness(.95)}
+.qstate{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.qstate.on{color:var(--amber)}
+.dec textarea{width:100%;font-family:var(--sans);font-size:13px;border:1px solid var(--line-2);border-radius:8px;padding:8px 10px;background:var(--panel-2);color:var(--ink);min-height:54px;resize:vertical}
+.arch{width:100%;height:auto;display:block;margin-top:10px}
+.arch text{font-family:var(--sans);fill:var(--ink)}
+.arch .mono{font-family:var(--mono)}
+.arch .box{fill:var(--panel-2);stroke:var(--line-2);stroke-width:1}
+.arch .box.hi{fill:var(--signal-soft);stroke:var(--signal)}
+.arch .box.warn{fill:var(--amber-soft);stroke:var(--amber)}
+.arch .grp{fill:none;stroke:var(--line-2);stroke-dasharray:4 4}
+.arch .edge{stroke:var(--ink-soft);stroke-width:1.4;fill:none;marker-end:url(#arr)}
+.arch .lbl{font-size:11px;fill:var(--muted)}
+.arch .ttl{font-size:12px;font-weight:600}
+.arch .sm{font-size:10.5px;fill:var(--muted)}
+.tree{font-family:var(--mono);font-size:12.5px;line-height:1.7;color:var(--ink-soft);white-space:pre;overflow-x:auto;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:8px}
+.tree b{color:var(--ink);font-weight:600}
+.tree i{color:var(--faint);font-style:normal}
+.phase{display:grid;grid-template-columns:minmax(0,54px) minmax(0,1fr);gap:14px;margin-top:14px}
+.phase .pn{font-family:var(--mono);font-weight:600;color:var(--signal);font-size:13px;padding-top:18px}
+.kv{display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr);gap:4px 14px;font-size:13.5px;margin-top:8px}
+.kv dt{color:var(--faint);font-family:var(--mono);font-size:12px}
+.kv dd{margin:0;color:var(--ink-soft)}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="nav-inner">
+  <a class="brand" href="#top"><span class="wordmark">propertyiq_getdata<span class="cursor"></span>db-pipeline</span><span class="brand-role">plan · s03</span></a>
+  <div class="nav-links">
+    <a href="#today">Today</a><a href="#arch">Architecture</a><a href="#naming">Naming</a><a href="#loader">Loader</a><a href="#dbt">dbt</a><a href="#platform">Platform</a><a href="#cutover">data-qa-agent</a><a href="#steps">Steps</a><a href="#risks">Risks</a><a href="#decisions">Decisions</a>
+    <button class="theme-toggle" id="themeBtn" aria-label="Toggle theme">◑</button>
+  </div>
+</div></nav>
+
+<header class="hero" id="top"><div class="hero-inner">
+  <p class="kicker">branch db-pipeline · propertyiq_getdata → nmp-central-ai Postgres</p>
+  <h1>One dbt pipeline that lands <span class="accent">every propertyiq dataset</span> in the central database</h1>
+  <p class="hero-sub">Today this repo ends at CSV partitions on disk and Google Drive. data-qa-agent re-does its own cleaning of the sales and rent data with a separate dlt + dbt project, and the ABS / RBA economic series reach no database at all. This plan adds a <code>db</code> command to <code>propertyiq_getdata</code> that loads the manifests into a project database <code>propertyiq</code> on the central Postgres and runs a dbt project (<code>raw → staging</code>) there. <strong>propertyiq owns landing and clean, typed, record-grain staging for every app to consume; each app owns its own marts.</strong> data-qa-agent drops its ingestion (dlt, the CSV/S3 inputs, samples) and keeps only a marts-layer dbt that reads propertyiq staging over <code>postgres_fdw</code>.</p>
+  <div class="metrics">
+    <div class="met"><span class="met-n">13</span><span class="met-l">datasets loaded (2 property + 8 ABS + 3 RBA)</span></div>
+    <div class="met"><span class="met-n">6.6 M</span><span class="met-l">record-grain rows (3.13 M sales · 3.39 M bonds)</span></div>
+    <div class="met"><span class="met-n">3</span><span class="met-l">schemas here: raw · staging · meta (marts belong to apps)</span></div>
+    <div class="met"><span class="met-n">6</span><span class="met-l">staging tables (2 property · 3 econ · 1 geo)</span></div>
+    <div class="met"><span class="met-n">1</span><span class="met-l">database: <code>propertyiq</code> (D13, one per project)</span></div>
+    <div class="met"><span class="met-n">0</span><span class="met-l">ingestion left in data-qa-agent (marts-only dbt stays)</span></div>
+  </div>
+</div></header>
+
+<main class="wrap">
+
+<!-- ───────────────────────── 1 TODAY ───────────────────────── -->
+<section id="today">
+  <h2><span class="snum">01</span>Where the data stops today</h2>
+  <p class="sec-sub">Verified against <code>data/manifests/*.csv</code>, <code>scripts/update_data_and_push.sh</code>, and <code>data-qa-agent/services/data-pipeline/</code> on 2026-09-22.</p>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card">
+      <h4>propertyiq_getdata (this repo)</h4>
+      <p>Four live sources write partitioned CSV + a manifest per dataset, then <code>scripts/data_push_with_one_backup.sh</code> copies <em>only the two legacy monolith files</em> (<code>nswgov_df.csv</code>, <code>rentboard_df.csv</code>) to Google Drive.</p>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>source / dataset</th><th>partition key</th><th class="nw">partitions</th><th class="nw">rows</th><th>size</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">nswgov/sales</td><td>weekly <code>period=YYYYMMDD</code></td><td>765</td><td class="nw">3 131 071</td><td>594 MB</td></tr>
+          <tr><td class="mono">rentboard/lodgements</td><td>monthly <code>year=/month=</code></td><td>116</td><td class="nw">3 386 869</td><td>78 MB</td></tr>
+          <tr><td class="mono">abs_ts/* (8)</td><td>snapshot <code>asof=YYYY-MM-DD</code></td><td>8</td><td class="nw">70 416</td><td>21 MB</td></tr>
+          <tr><td class="mono">rba/* (3)</td><td>snapshot <code>asof=YYYY-MM-DD</code></td><td>3</td><td class="nw">12 629</td><td>1.8 MB</td></tr>
+          <tr><td class="mono">abs/poa (Census)</td><td>—</td><td>0</td><td>0</td><td><span class="pill grey">empty locally</span></td></tr>
+        </tbody></table></div>
+      <p class="one">Every partition already carries a sha256 and row count in its manifest — that is the incremental-load signal the loader needs, for free.</p>
+    </div>
+    <div class="card">
+      <h4>data-qa-agent (consumer)</h4>
+      <p><code>services/data-pipeline/</code>: <code>ingest.py</code> streams <code>nswgov_df.csv</code> + <code>rentboard_df.csv</code> with <strong>dlt</strong> into <code>raw.property_sales</code> / <code>raw.property_rent</code> (write_disposition <code>replace</code>, full reload every run), then <code>dbt build</code> makes <code>staging.property_sales</code>, <code>staging.property_rent</code>, <code>marts.property_sales</code>, <code>marts.property_rent</code>, <code>marts.property_yield</code>, <code>marts.dim_postcode_geo</code> in database <code>dataqa</code>.</p>
+      <ul class="list-clean amber">
+        <li>Cleaning rules (RESIDENCE filter, $10k–$8M price band, hectare→sqm, house/unit derivation, bedroom bands) live there, not next to the scraper that knows the data.</li>
+        <li>It depends on the legacy monoliths, which this repo now only keeps for backwards compatibility (<code>migrate-legacy</code>).</li>
+        <li>Its RLS post-hooks (<code>apply_dataset_rls</code>) reference <code>app.datasets</code> / <code>app.is_admin()</code> — app concerns that must stay in <code>dataqa</code>.</li>
+        <li>No ABS or RBA data anywhere in the database.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout star" style="margin-top:18px"><h4>What changes — the ownership split</h4>
+    <p><strong>propertyiq_getdata = land + clean.</strong> It loads every manifest partition into <code>propertyiq.raw</code> and builds <code>propertyiq.staging</code>: typed, cleaned, record-grain, app-agnostic tables (one row per sale, per bond, per economic observation). That is the layer <em>any</em> app on the platform reads and augments. <strong>Apps = marts.</strong> data-qa-agent keeps its own <code>marts.*</code> (the postcode × month aggregates, yield, RLS) built by its own dbt — but sourced from <code>propertyiq_staging</code> foreign tables instead of a CSV it ingests itself. Its dlt ingest, the CSV/S3 inputs, the samples and the <code>/data</code> mount are decommissioned; the cleaning rules move here.</p>
+  </div>
+</section>
+
+<!-- ───────────────────────── 2 ARCHITECTURE ───────────────────────── -->
+<section id="arch">
+  <h2><span class="snum">02</span>Target architecture</h2>
+  <p class="sec-sub">Everything left of the database boundary already exists. The new pieces are the <code>db</code> CLI group (loader + dbt runner), the <code>dbt/</code> staging project, and the FDW bridge into <code>dataqa</code>. Marts live with the app that needs them.</p>
+  <div class="card" style="margin-top:14px">
+  <svg class="arch" viewBox="0 0 1080 420" role="img" aria-labelledby="archT"><title id="archT">propertyiq_getdata publishes CSV partitions, the db loader copies them into propertyiq.raw, dbt builds staging, and each app builds its own marts from propertyiq staging through postgres_fdw</title>
+    <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5 0 10z" fill="currentColor" style="color:var(--ink-soft)"/></marker></defs>
+    <!-- sources -->
+    <g id="n-sources"><title>Publishers</title>
+      <rect class="box" x="16" y="40" width="150" height="56" rx="8"/><text class="ttl" x="91" y="63" text-anchor="middle">NSW Valuer General</text><text class="sm" x="91" y="80" text-anchor="middle">weekly sales .DAT</text>
+      <rect class="box" x="16" y="112" width="150" height="56" rx="8"/><text class="ttl" x="91" y="135" text-anchor="middle">NSW Rental Bonds</text><text class="sm" x="91" y="152" text-anchor="middle">monthly lodgements</text>
+      <rect class="box" x="16" y="184" width="150" height="56" rx="8"/><text class="ttl" x="91" y="207" text-anchor="middle">ABS Data API</text><text class="sm" x="91" y="224" text-anchor="middle">SDMX · 8 dataflows</text>
+      <rect class="box" x="16" y="256" width="150" height="56" rx="8"/><text class="ttl" x="91" y="279" text-anchor="middle">RBA statistics</text><text class="sm" x="91" y="296" text-anchor="middle">f1.1 · f5 · a2 CSV</text>
+    </g>
+    <!-- repo -->
+    <rect class="grp" x="196" y="20" width="270" height="380" rx="12"/>
+    <text class="mono sm" x="210" y="40">propertyiq_getdata (existing)</text>
+    <g id="n-sources-py"><title>sources/*.py</title><rect class="box" x="212" y="60" width="238" height="70" rx="8"/><text class="ttl" x="331" y="84" text-anchor="middle">sources/ pull → transform</text><text class="sm" x="331" y="101" text-anchor="middle">nswgov · rentboard · abs_ts · rba</text><text class="sm" x="331" y="116" text-anchor="middle">atomic writes, raise on zero rows</text></g>
+    <g id="n-partitions"><title>data/normalized + data/manifests</title><rect class="box" x="212" y="160" width="238" height="86" rx="8"/><text class="ttl" x="331" y="184" text-anchor="middle">data/normalized/&lt;src&gt;/&lt;dataset&gt;/</text><text class="sm mono" x="331" y="203" text-anchor="middle">period= · year=/month= · asof=</text><text class="sm" x="331" y="222" text-anchor="middle">+ manifests/*.csv (path, rows, sha256)</text><text class="sm" x="331" y="237" text-anchor="middle">= the loader's contract</text></g>
+    <g id="n-db-cli"><title>db CLI group (new)</title><rect class="box hi" x="212" y="280" width="238" height="100" rx="8"/><text class="ttl" x="331" y="304" text-anchor="middle">db load  ·  db dbt  ·  db update</text><text class="sm" x="331" y="323" text-anchor="middle">NEW · propertyiq_getdata/db/</text><text class="sm" x="331" y="340" text-anchor="middle">manifest-driven COPY, skip unchanged sha256</text><text class="sm" x="331" y="356" text-anchor="middle">then dbt build + docs generate</text><text class="sm" x="331" y="372" text-anchor="middle">writes meta.load_state / meta.pipeline_runs</text></g>
+    <!-- postgres propertyiq -->
+    <rect class="grp" x="500" y="20" width="270" height="380" rx="12"/>
+    <text class="mono sm" x="514" y="40">central Postgres · database propertyiq (new)</text>
+    <g id="n-raw"><title>raw schema</title><rect class="box hi" x="516" y="60" width="238" height="64" rx="8"/><text class="ttl" x="635" y="84" text-anchor="middle">raw.&lt;source&gt;_&lt;dataset&gt;</text><text class="sm" x="635" y="101" text-anchor="middle">13 text tables · _partition _sha256 _loaded_at</text><text class="sm" x="635" y="115" text-anchor="middle">owner: propertyiq_owner</text></g>
+    <g id="n-staging"><title>staging schema</title><rect class="box hi" x="516" y="150" width="238" height="70" rx="8"/><text class="ttl" x="635" y="174" text-anchor="middle">staging.property_* · staging.econ_series</text><text class="sm" x="635" y="191" text-anchor="middle">typed, cleaned, record grain — the shared layer</text><text class="sm" x="635" y="207" text-anchor="middle">+ econ_series_vintages · postcode_geo</text></g>
+    <g id="n-no-marts"><title>No marts in propertyiq</title><rect class="box" x="516" y="246" width="238" height="70" rx="8" style="stroke-dasharray:3 3;opacity:.75"/><text class="ttl" x="635" y="270" text-anchor="middle">(no marts here)</text><text class="sm" x="635" y="287" text-anchor="middle">aggregates are app-specific →</text><text class="sm" x="635" y="303" text-anchor="middle">each consumer builds its own from staging</text></g>
+    <g id="n-meta"><title>meta schema</title><rect class="box" x="516" y="340" width="238" height="44" rx="8"/><text class="ttl" x="635" y="359" text-anchor="middle">meta.load_state · meta.pipeline_runs</text><text class="sm" x="635" y="375" text-anchor="middle">what is loaded, when, from which sha256</text></g>
+    <!-- dataqa -->
+    <rect class="grp" x="804" y="20" width="260" height="380" rx="12"/>
+    <text class="mono sm" x="818" y="40">database dataqa (data-qa-agent)</text>
+    <g id="n-fdw"><title>postgres_fdw foreign schemas</title><rect class="box warn" x="820" y="150" width="228" height="70" rx="8"/><text class="ttl" x="934" y="174" text-anchor="middle">propertyiq_staging.* (foreign tables)</text><text class="sm" x="934" y="191" text-anchor="middle">IMPORT FOREIGN SCHEMA via postgres_fdw</text><text class="sm" x="934" y="207" text-anchor="middle">user mapping → propertyiq_ro</text></g>
+    <g id="n-dq-marts"><title>dataqa marts with RLS</title><rect class="box" x="820" y="246" width="228" height="70" rx="8"/><text class="ttl" x="934" y="270" text-anchor="middle">marts.* — its own dbt (marts layer only)</text><text class="sm" x="934" y="287" text-anchor="middle">select from propertyiq_staging → aggregate</text><text class="sm" x="934" y="303" text-anchor="middle">apply_dataset_rls() post-hooks unchanged</text></g>
+    <g id="n-app"><title>data-qa-agent app + agent</title><rect class="box" x="820" y="340" width="228" height="44" rx="8"/><text class="ttl" x="934" y="359" text-anchor="middle">API · agent (app_user / agent_ro)</text><text class="sm" x="934" y="375" text-anchor="middle">queries marts.* exactly as today</text></g>
+    <g id="n-deleted"><title>Removed from data-qa-agent</title><rect class="box" x="820" y="60" width="228" height="64" rx="8" style="stroke-dasharray:3 3;opacity:.7"/><text class="ttl" x="934" y="84" text-anchor="middle" style="text-decoration:line-through">ingest.py · dlt · CSV/S3 inputs · samples</text><text class="sm" x="934" y="101" text-anchor="middle">decommissioned — cleaning moves to propertyiq</text><text class="sm" x="934" y="115" text-anchor="middle">(companion PR in data-qa-agent, part of this work)</text></g>
+    <!-- edges -->
+    <path class="edge" d="M166 68 H212 M166 140 H212 M166 212 L212 100 M166 284 L212 110"/>
+    <path class="edge" d="M331 130 V160"/>
+    <path class="edge" d="M331 246 V280"/>
+    <path class="edge" d="M450 330 H480 V92 H516"/><text class="lbl" x="466" y="86" text-anchor="middle">COPY</text>
+    <path class="edge" d="M450 360 H480 V362 H516"/>
+    <path class="edge" d="M635 124 V150"/><text class="lbl" x="660" y="141">dbt</text>
+        <path class="edge" d="M754 185 H820"/><text class="lbl" x="787" y="179" text-anchor="middle">fdw</text>
+    
+    <path class="edge" d="M934 220 V246"/>
+    <path class="edge" d="M934 316 V340"/>
+  </svg>
+  <p class="dia-cap">Solid = exists · green = new in this repo · amber = new in dataqa (one Alembic migration) · dashed strike = decommissioned</p>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><h4>Why a separate database, not <code>dataqa.raw</code></h4><p>Platform rule D13 is one database per project; the registry, <code>db-init</code>, backups and role grants all assume it. Writing into <code>dataqa</code> would couple this repo's loader to data-qa-agent's Alembic schemas and RLS. <code>postgres_fdw</code> is already installed on the cluster (Postgres 16.14) so the boundary costs one <code>IMPORT FOREIGN SCHEMA</code>.</p></div>
+    <div class="card"><h4>Why COPY, not dlt</h4><p>The loader's input is already a clean, typed-by-contract CSV with a sha256 per partition. dlt would add a 40-package dependency, its own <code>_dlt_*</code> state tables and type inference we then have to pin back to text (exactly what data-qa-agent does today). A 60-line psycopg <code>COPY … FROM STDIN</code> per partition is faster and the incremental logic reads straight off the manifest. See <a href="#loader">§04</a>.</p></div>
+    <div class="card"><h4>Why staging here, marts there</h4><p>Cleaning rules belong beside the scraper that knows the quirks (this repo's AGENTS.md already documents the .DAT layout, the bond-board columns, SDMX keys) and they are the same for every consumer. Aggregation grain, thresholds (<code>n_sold ≥ 5</code>), RLS and "which slug may see it" are product decisions — they stay with the app. data-qa-agent's <code>stg_*</code> models and dlt go; its <code>mart_*</code> models and RLS macros stay exactly as they are, re-pointed at foreign tables.</p></div>
+  </div>
+</section>
+
+<!-- ───────────────────────── 3 NAMING ───────────────────────── -->
+<section id="naming">
+  <h2><span class="snum">03</span>Schema and table naming convention</h2>
+  <p class="sec-sub">One rule per layer, no exceptions. Source names appear <em>only</em> in <code>raw</code>; in <code>staging</code> tables are named by domain (<code>property_*</code> = NSW micro data, <code>econ_*</code> = ABS/RBA macro series, <code>geo_*</code> = reference). Consumers see <code>staging</code> as <code>propertyiq_staging.*</code> in their own database and put whatever they derive in their own <code>marts</code>.</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>schema</th><th>rule</th><th>owner / readers</th><th>materialised by</th></tr></thead>
+    <tbody>
+      <tr><td class="mono"><strong>raw</strong></td><td><code>raw.&lt;source&gt;_&lt;dataset&gt;</code>, every column <code>text</code> exactly as the CSV header, plus loader columns <code>_partition</code>, <code>_sha256</code>, <code>_loaded_at</code>. Never queried by consumers.</td><td>propertyiq_owner · —</td><td><code>db load</code> (COPY)</td></tr>
+      <tr><td class="mono"><strong>staging</strong></td><td><code>staging.&lt;domain&gt;_&lt;noun&gt;</code>, typed and cleaned, <strong>record grain</strong> (one row per sale / bond / observation). Column names are snake_case business names; dates end <code>_date</code>, month buckets <code>_month</code>, quarter buckets <code>_quarter</code>.</td><td>propertyiq_owner · propertyiq_ro</td><td>dbt, <code>+materialized: table</code></td></tr>
+      <tr><td class="mono"><strong>marts</strong></td><td><em>Not in propertyiq.</em> Aggregates are app-shaped; each consumer builds <code>marts.*</code> in its own database from <code>propertyiq_staging.*</code>. data-qa-agent's existing <code>marts.property_sales / property_rent / property_yield / dim_postcode_geo</code> keep their names and columns.</td><td>the app</td><td>the app's dbt</td></tr>
+      <tr><td class="mono"><strong>meta</strong></td><td><code>meta.load_state</code> (one row per loaded partition), <code>meta.pipeline_runs</code> (one row per <code>db update</code>). The freshness source for dashboards and dbt <code>source freshness</code>.</td><td>propertyiq_owner · propertyiq_ro</td><td><code>db init</code> DDL + loader</td></tr>
+    </tbody></table></div>
+
+  <h3 class="blk">Table catalogue</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>table</th><th>grain / key</th><th>from</th><th>notes</th></tr></thead>
+    <tbody>
+      <tr><td colspan="4" style="background:var(--panel-2);font-family:var(--mono);font-size:12px;color:var(--faint)">raw — 13 landing tables</td></tr>
+      <tr><td class="mono">raw.nswgov_sales</td><td>1 row per .DAT B-record · <code>_partition = period=YYYYMMDD</code></td><td>765 weekly partitions</td><td>28 source columns unchanged (header identical across 2012–2026, verified). Partition replaced on sha256 change.</td></tr>
+      <tr><td class="mono">raw.rentboard_lodgements</td><td>1 row per bond · <code>_partition = year=YYYY/month=MM</code></td><td>116 monthly partitions</td><td>5 columns. Partition replaced on sha256 change.</td></tr>
+      <tr><td class="mono">raw.abs_ts_{dwelling_values, dwelling_medians, cpi, labour_force, wpi, lending_housing, building_approvals, population}</td><td>1 row per (series_id, time_period, asof) · <code>_partition = asof=YYYY-MM-DD</code></td><td>8 snapshot datasets</td><td>16 <code>CORE_COLUMNS</code> + that dataflow's ragged <code>dim_*</code> columns. Snapshots are <strong>appended</strong>, never replaced — every vintage is kept.</td></tr>
+      <tr><td class="mono">raw.rba_{cash_rate, lending_rates, rate_changes}</td><td>same as abs_ts</td><td>3 snapshot tables</td><td><code>CORE_COLUMNS</code> only (no dims).</td></tr>
+      <tr><td colspan="4" style="background:var(--panel-2);font-family:var(--mono);font-size:12px;color:var(--faint)">staging — 6 tables (the shared layer)</td></tr>
+      <tr><td class="mono">staging.property_sales</td><td>1 row per residential sale · <code>sale_id</code></td><td>raw.nswgov_sales</td><td>Ported verbatim from data-qa-agent <code>stg_sales.sql</code>: RESIDENCE only, price $10k–$8M, YYYYMMDD → <code>sale_date</code>, strata → <code>property_type</code>, hectare→sqm, <code>area_band</code>. Adds <code>dealing_no</code>, <code>settle_date</code> (present in partitions, dropped by the old ingest).</td></tr>
+      <tr><td class="mono">staging.property_rent</td><td>1 row per bond · <code>rent_id</code></td><td>raw.rentboard_lodgements</td><td>Ported verbatim from <code>stg_rent.sql</code>: H/T → house, else unit; <code>bedroom_band</code>.</td></tr>
+      <tr><td class="mono">staging.econ_series</td><td>1 row per (series_id, period_start) · <strong>latest vintage only</strong></td><td>all 11 raw abs_ts_/rba_ tables</td><td>UNION of the 11 raw tables on <code>CORE_COLUMNS</code>; <code>dim_*</code> folded into one <code>dims jsonb</code>; <code>value numeric</code>; <code>period_start date</code>; <code>period_quarter</code>, <code>period_month</code> derived. Filter <code>asof = max(asof) per dataset</code>.</td></tr>
+      <tr><td class="mono">staging.econ_series_vintages</td><td>1 row per (series_id, period_start, asof)</td><td>same</td><td>Same shape with every <code>asof</code>. Lets you reproduce "what did the ABS say in March" and measure revisions.</td></tr>
+      <tr><td class="mono">staging.econ_headline_series</td><td>1 row per curated series_id</td><td>dbt seed</td><td><code>series_id, dataset, measure, region, adjustment, unit</code> — the curated list of headline series (NSW unemployment rate SA, mean dwelling price, cash rate target, …). Lets a consumer pivot <code>econ_series</code> to wide with one join instead of knowing SDMX keys.</td></tr>
+      <tr><td class="mono">staging.geo_postcode</td><td>1 row per postcode</td><td>dbt seed</td><td><code>postcode_geo.csv</code> moved from data-qa-agent's seeds (postcode → SA2/SA3/SA4/GCC/state), <code>postcode text</code> pinned. Shared geography for every app.</td></tr>
+      <tr><td colspan="4" style="background:var(--panel-2);font-family:var(--mono);font-size:12px;color:var(--faint)">marts — owned by consumers (data-qa-agent shown as the first one)</td></tr>
+      <tr><td class="mono">dataqa · marts.property_sales / property_rent / property_yield / dim_postcode_geo</td><td>unchanged grain</td><td>propertyiq_staging.property_sales / property_rent / geo_postcode</td><td>Existing <code>mart_*.sql</code> and <code>int_postcode_geo.sql</code>, only their <code>ref('stg_*')</code> becomes <code>source('propertyiq_staging', …)</code>. RLS post-hooks unchanged.</td></tr>
+      <tr><td class="mono">dataqa · marts.econ_* (optional, later)</td><td>region × period</td><td>propertyiq_staging.econ_series ⋈ econ_headline_series</td><td>If the agent should answer macro questions: wide pivots (<code>econ_labour_market</code>, <code>econ_interest_rates</code>, <code>econ_indicators_quarterly</code>…) built there under a new dataset slug. The shapes proposed in the earlier draft are kept in §05 as a reference pattern, not built here.</td></tr>
+    </tbody></table></div>
+  <div class="note-box">Which ABS/RBA series is "the unemployment rate" is data, not SQL: the seed <code>econ_headline_series.csv</code> carries that mapping, so a consumer's pivot is <code>join staging.econ_headline_series using (series_id)</code> and adding a measure is a CSV row plus a test. Series IDs are stable (<code>LF.M13.3.1599.20.1.M</code> = NSW unemployment rate SA; <code>RES_DWELL_ST.5.1.Q</code> = NSW mean dwelling price; <code>FIRMMCRT</code> = cash rate target) and were verified in the 2026-09-21 snapshots.</div>
+</section>
+
+<!-- ───────────────────────── 4 LOADER ───────────────────────── -->
+<section id="loader">
+  <h2><span class="snum">04</span>The loader: <code>propertyiq-getdata db load</code></h2>
+  <p class="sec-sub">A new package <code>propertyiq_getdata/db/</code>, following the repo's split: mechanics in <code>core/</code>-style modules, driven from <code>cli.py</code>. Dependencies land in an optional extra <code>[db]</code> (<code>psycopg[binary]</code>, <code>dbt-core</code>, <code>dbt-postgres</code>) so the scrape-only install stays light.</p>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card"><h4>Algorithm (per dataset)</h4>
+      <ol class="list-clean" style="list-style:decimal">
+        <li>Read the manifest (<code>source, dataset, path, rows, sha256</code>) — it is already the authoritative list of partitions.</li>
+        <li>Read <code>meta.load_state</code> for that table: <code>(_partition → sha256, rows)</code>.</li>
+        <li>For each manifest row whose sha256 differs or is missing: in one transaction, <code>DELETE … WHERE _partition = $1</code> (no-op for new snapshots), then <code>COPY raw.t (cols…) FROM STDIN (FORMAT csv, HEADER)</code> streaming the file, then upsert <code>meta.load_state</code>.</li>
+        <li>Partitions in <code>load_state</code> but no longer in the manifest are deleted (a re-transformed nswgov week that disappears) unless the dataset is snapshot-typed (vintages are never dropped).</li>
+        <li>Assert loaded row count == manifest <code>rows</code>; mismatch raises, transaction rolls back — same "raise on zero rows" discipline as the sources.</li>
+        <li><code>--full-refresh</code> truncates the raw table and forgets its state first; <code>--dataset</code> (append) and <code>--dry-run</code> match the existing CLI conventions.</li>
+      </ol>
+    </div>
+    <div class="card"><h4>Table creation & typing</h4>
+      <p><code>db init</code> creates the four schemas, the two <code>meta</code> tables, and grants (<code>USAGE</code> + <code>SELECT</code> on staging/marts/meta to <code>propertyiq_ro</code>, default privileges so dbt-created tables inherit it). Raw tables are created lazily from the CSV header on first load — every column <code>text</code>, then the three loader columns. A header that differs from the existing table is an error, not an ALTER: the source contract changed and someone should look.</p>
+      <p>Expected first load on the laptop: ~3.1 M sales rows via COPY ≈ 1–2 min, rent ≈ 1 min, econ series seconds. Weekly incremental: 1 new sales partition, ≤1 rent partition, 0–11 snapshots.</p>
+      <dl class="kv">
+        <dt>connection</dt><dd><code>PROPERTYIQ_DATABASE_URL</code> (propertyiq_owner) from <code>.env</code>; <code>db init</code> uses <code>PROPERTYIQ_ADMIN_DATABASE_URL</code> (nmp) once. Never a hardcoded port or URL (PLATFORM.md).</dd>
+        <dt>unreachable</dt><dd>Fail with the platform message: run <code>make -C ~/git/nmp-ai-portfolio/nmp-central-ai up</code>. No sqlite fallback.</dd>
+        <dt>tests</dt><dd>Offline: loader logic against a fake connection + manifest fixtures. <code>live</code>-marked: end-to-end against the central DB into a throwaway schema prefix.</dd>
+      </dl>
+    </div>
+  </div>
+  <h3 class="blk">COPY loader vs dlt (what data-qa-agent uses today)</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th></th><th>manifest-driven COPY <span class="pill">recommended</span></th><th>dlt (as in data-qa-agent)</th></tr></thead>
+    <tbody>
+      <tr><td class="step">incremental</td><td>Native: sha256 per partition from the manifest; only changed files move.</td><td>Would need a custom incremental hint on <code>_partition</code>; today's config is full <code>replace</code> (580 MB every run).</td></tr>
+      <tr><td class="step">typing</td><td>Everything text by construction; dbt owns casting (same principle data-qa-agent already follows).</td><td>Infers types; needs explicit text hints per column to stop it (SALES_TEXT/RENT_TEXT lists today).</td></tr>
+      <tr><td class="step">deps & footprint</td><td><code>psycopg</code> only (~1 package).</td><td><code>dlt[postgres]</code> ≈ 40 packages, <code>_dlt_loads/_dlt_version/_dlt_pipeline_state</code> tables in the schema.</td></tr>
+      <tr><td class="step">speed</td><td>COPY streams at disk speed; 6.6 M rows in a few minutes.</td><td>Normalises to parquet/insert-values first; noticeably slower for the same rows.</td></tr>
+      <tr><td class="step">schema evolution</td><td>Header mismatch = hard error (deliberate).</td><td>Auto-adds columns (silent drift).</td></tr>
+      <tr><td class="step">effort</td><td>~200 lines + tests, all in this repo's idiom.</td><td>Less code but a second config surface (<code>.dlt/</code>, env-var credentials naming).</td></tr>
+    </tbody></table></div>
+</section>
+
+<!-- ───────────────────────── 5 DBT ───────────────────────── -->
+<section id="dbt">
+  <h2><span class="snum">05</span>The dbt project (staging only)</h2>
+  <p class="sec-sub">Lives at <code>dbt/</code> in this repo; profile <code>propertyiq</code>, connection derived from <code>PROPERTYIQ_DATABASE_URL</code> by <code>db dbt</code> (the same URL-to-<code>DBT_*</code> env split data-qa-agent's <code>run.py</code> does). <code>generate_schema_name</code> macro copied so <code>+schema</code> is used verbatim.</p>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="tree"><b>dbt/</b>
+├── dbt_project.yml            <i>name: propertyiq · staging as tables</i>
+├── profiles.yml               <i>env_var(DBT_HOST…) · default dbname propertyiq</i>
+├── macros/
+│   ├── generate_schema_name.sql   <i>from data-qa-agent, unchanged</i>
+│   └── latest_vintage.sql         <i>asof = max(asof) per dataset</i>
+├── seeds/
+│   ├── geo_postcode.csv           <i>data-qa-agent's postcode_geo.csv, moved</i>
+│   └── econ_headline_series.csv   <i>curated series_id → measure</i>
+├── models/staging/
+│   ├── _sources.yml               <i>13 raw tables, freshness on _loaded_at</i>
+│   ├── _staging.yml               <i>columns + descriptions (feeds DBT_MANIFEST)</i>
+│   ├── stg_property_sales.sql     <i>alias property_sales · from stg_sales.sql</i>
+│   ├── stg_property_rent.sql      <i>alias property_rent  · from stg_rent.sql</i>
+│   ├── stg_econ_series.sql        <i>union 11 raw · latest vintage · dims jsonb</i>
+│   └── stg_econ_series_vintages.sql
+└── tests/                          <i>uniqueness, coverage, econ seed integrity</i></div>
+    <div>
+      <div class="card"><h4>What is ported unchanged from data-qa-agent</h4>
+        <ul class="list-clean">
+          <li><code>stg_sales.sql</code>, <code>stg_rent.sql</code> (every cleaning rule and comment), the <code>postcode_geo</code> seed, <code>generate_schema_name</code>, the two staging uniqueness/coverage tests.</li>
+          <li>Column names and aliases (<code>staging.property_sales</code>, <code>staging.property_rent</code>) — data-qa-agent's <code>mart_*.sql</code> must compile against the foreign tables without edits beyond the <code>source()</code> swap.</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top:12px"><h4>What stays in data-qa-agent</h4>
+        <ul class="list-clean amber">
+          <li><code>mart_property_sales/rent/yield.sql</code>, <code>int_/dim_postcode_geo.sql</code>, <code>apply_dataset_rls*</code>, the four mart tests, <code>agent_queryable</code> tags — its marts, its rules.</li>
+          <li><code>run.py</code> minus the ingest call; <code>dbt build</code> is the whole job. The manifest it generates still feeds <code>DBT_MANIFEST</code>; propertyiq's staging descriptions reach the agent through that project's <code>_sources.yml</code>.</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top:12px"><h4>New tests worth having</h4>
+        <ul class="list-clean">
+          <li><code>econ_series</code>: unique (series_id, period_start); every seed series_id exists in staging (catches an ABS key change).</li>
+          <li><code>econ_headline_series</code> ⋈ <code>econ_series</code>: every curated series has an observation in the last 2 quarters (catches an ABS key change or a broken dataflow).</li>
+          <li>Source freshness: <code>raw.nswgov_sales._loaded_at</code> warn &gt; 10 d, error &gt; 21 d.</li>
+          <li><code>staging.property_*</code>: row-count parity per year with data-qa-agent's last <code>staging.property_*</code> build (one-off, during cut-over).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── 6 PLATFORM ───────────────────────── -->
+<section id="platform">
+  <h2><span class="snum">06</span>Platform onboarding (nmp-central-ai)</h2>
+  <p class="sec-sub">Follows <code>docs/onboarding.md</code> and the M3 database rules: registry entry → <code>make db-init</code> → paste the env block → project migrate → <code>make check</code>.</p>
+  <div class="grid g2" style="margin-top:14px">
+    <div>
+      <p class="kicker">registry/projects.yaml — new entry</p>
+<pre><span class="c"># nmp-central-ai/registry/projects.yaml</span>
+  - id: P7
+    name: propertyiq-getdata
+    path: ../propertyiq_getdata
+    status: migrated
+    mlflow: { client: external }   <span class="c"># ETL only; no MLflow use</span>
+    database:
+      name: <span class="k">propertyiq</span>
+      roles: [<span class="k">propertyiq_owner</span>, <span class="k">propertyiq_ro</span>]
+      extensions: []               <span class="c"># fdw lives in dataqa, not here</span>
+      env:
+        PROPERTYIQ_ADMIN_DATABASE_URL: superuser        <span class="c"># db init only (D16)</span>
+        PROPERTYIQ_DATABASE_URL: propertyiq_owner       <span class="c"># loader + dbt</span>
+        PROPERTYIQ_RO_DATABASE_URL: propertyiq_ro       <span class="c"># dataqa fdw mapping, notebooks</span>
+      migrate: uv run --extra db propertyiq-getdata db init
+      smoke:   uv run --extra db propertyiq-getdata db smoke
+      status: migrated
+      aws: false
+    notes: >-
+      NSW property sales/rent + ABS/RBA economic series, raw→staging via dbt.
+      Shared clean layer: apps import staging over postgres_fdw and build their
+      own marts (data-qa-agent first; replaces its dlt ingest).</pre>
+    </div>
+    <div>
+      <p class="kicker">commands, in order</p>
+<pre><span class="c"># 1. platform: create role + database, write URLs</span>
+make -C ~/git/nmp-ai-portfolio/nmp-central-ai db-init
+make -C ~/git/nmp-ai-portfolio/nmp-central-ai db-urls   <span class="c"># copy P7 block → propertyiq_getdata/.env</span>
+
+<span class="c"># 2. this repo: schemas, meta tables, grants</span>
+uv sync --extra db
+uv run --env-file .env propertyiq-getdata db init
+
+<span class="c"># 3. first full load + build (~5 min)</span>
+uv run --env-file .env propertyiq-getdata db update --data-dir data
+<span class="c">#   = db load (all 13 datasets) → dbt seed → dbt build → dbt docs generate</span>
+
+<span class="c"># 4. platform verifier</span>
+make -C ~/git/nmp-ai-portfolio/nmp-central-ai check ARGS="--only P7"</pre>
+      <div class="callout warn"><h4>Check before relying on it</h4><p><code>check_projects.py</code> may expect an MLflow smoke for every non-excluded project; <code>mlflow: {client: external}</code> is how PLATFORM opts out today. Step 1 of the build verifies the verifier accepts a database-only project, and adds the small registry/verifier change if not.</p></div>
+      <p class="kicker" style="margin-top:16px">db smoke (zero-LLM, read-only)</p>
+      <pre>select count(*) from staging.econ_series where period_start &gt;= now() - interval '1 year';
+select max(_loaded_at) from raw.nswgov_sales;   <span class="c"># both &gt; 0 / not null → exit 0</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── 7 CUTOVER ───────────────────────── -->
+<section id="cutover">
+  <h2><span class="snum">07</span>data-qa-agent: decommission ingestion, keep marts</h2>
+  <p class="sec-sub">Companion PR in the data-qa-agent repo (P6). Everything that <em>acquires or cleans</em> data goes; everything that <em>shapes it for the app</em> stays, re-pointed at <code>propertyiq_staging</code>.</p>
+  <div class="grid g2" style="margin-top:14px">
+    <div>
+      <div class="card"><h4>Deleted</h4>
+        <ul class="list-clean amber">
+          <li><code>services/data-pipeline/ingest.py</code>, <code>dlt[postgres]</code>, <code>boto3</code>, <code>PIPELINE_SOURCE</code>, <code>DATA_S3_*</code>; <code>dbt/models/staging/stg_sales.sql</code>, <code>stg_rent.sql</code>, <code>_sources.yml</code> (raw), <code>seeds/postcode_geo.csv</code>, the two staging tests.</li>
+          <li><code>docker-compose.yml</code>: the <code>/data</code> bind mount, <code>pipeline-full</code>; <code>Makefile</code>: <code>pipeline-full</code>, <code>samples</code>; <code>scripts/make_samples.py</code>; <code>data/samples/*.csv</code>; <code>raw.property_sales</code>/<code>raw.property_rent</code> tables dropped by migration (backup first — rule 7).</li>
+          <li><code>infra/terraform</code>: the pipeline task's S3 read policy and CSV bucket (the task itself stays: it now only runs <code>dbt build</code>). AWS is a demo (D19) — <code>terraform plan</code> review only.</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top:12px"><h4>Added (one Alembic migration)</h4>
+        <ul class="list-clean">
+          <li><code>create extension postgres_fdw</code> (add to its registry <code>extensions</code>); server <code>propertyiq</code>; user mapping <code>nmp → propertyiq_ro</code>; <code>import foreign schema staging from server propertyiq into propertyiq_staging</code>.</li>
+          <li>dbt: new <code>_sources.yml</code> declaring <code>propertyiq_staging.property_sales / property_rent / geo_postcode / econ_series / econ_headline_series</code>; <code>mart_*.sql</code> and <code>int_postcode_geo.sql</code> swap <code>ref('stg_sales')</code> → <code>source('propertyiq_staging','property_sales')</code>. Nothing else in those files changes.</li>
+          <li>The agent's record-grain grounding (<code>STG_SALES</code>/<code>STG_RENT</code> in <code>schema.py</code>) points at <code>propertyiq_staging.*</code>; <code>agent_ro</code> needs <code>USAGE</code> on that schema and a user mapping of its own (read-only role, so this is safe) — or the two record-grain tables are also materialised locally under RLS, as today. <span class="pill amber">decide in P6</span></li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <p class="kicker">once, in dataqa as nmp (inside the migration)</p>
+<pre>create extension if not exists postgres_fdw;
+create server if not exists propertyiq
+  foreign data wrapper postgres_fdw
+  options (host 'postgres', port '5432', dbname 'propertyiq', fetch_size '10000');
+create user mapping if not exists for nmp server propertyiq
+  options (user 'propertyiq_ro', password :'PROPERTYIQ_RO_PASSWORD');
+create schema if not exists propertyiq_staging;
+import foreign schema staging from server propertyiq into propertyiq_staging;
+grant usage on schema propertyiq_staging to app_user, agent_ro;   <span class="c">-- if the agent reads record grain directly</span></pre>
+      <p class="note-box"><code>host 'postgres'</code> is the compose-network name (PLATFORM.md); from the host use <code>localhost</code>. Password from the P7 env block, never the file. Re-run the <code>import</code> line when propertyiq adds a staging table.</p>
+      <div class="card"><h4>What its job looks like afterwards</h4>
+        <p><code>make pipeline</code> = <code>docker compose run pipeline</code> = <code>run.py</code>: wake DB → <code>dbt build</code> (marts + tests, reading foreign tables; ~3 M rows cross the FDW once per build) → <code>dbt docs generate</code> → <code>_record_run</code>. No inputs to mount, no <code>PIPELINE_SOURCE</code>. CI keeps working with a tiny fixture: a <code>propertyiq</code> database in the D18 service container seeded from <code>tests/fixtures/propertyiq_staging.sql</code>, exported once by this repo (<code>db export-fixture --limit 500</code>).</p>
+      </div>
+      <div class="callout warn" style="margin-top:12px"><h4>Sequencing</h4><p>data-qa-agent's job must run <em>after</em> this repo's weekly <code>db update</code>. Simplest: <code>update_data_and_push.sh</code> ends by invoking <code>make -C ../data-qa-agent pipeline</code> when that checkout exists; otherwise the two crons are ordered by time. A <code>meta.pipeline_runs</code> row lets data-qa-agent's dbt source-freshness test fail loudly if it ever runs on stale staging.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── 8 STEPS ───────────────────────── -->
+<section id="steps">
+  <h2><span class="snum">08</span>Build steps</h2>
+  <p class="sec-sub">All six phases are in scope. P1 is a small platform PR; P2–P5 are this branch, one PR through <code>/no-mistakes</code>; P6 is the companion PR in data-qa-agent that removes its ingestion and re-points its marts.</p>
+
+  <div class="phase"><div class="pn">P1</div><div class="card"><h4>Platform seat</h4>
+    <p>Add P7 to <code>registry/projects.yaml</code>; run <code>make db-init</code>; confirm <code>make check ARGS="--only P7"</code> tolerates a database-only project (fix the verifier if not). Paste the P7 block into <code>propertyiq_getdata/.env</code> (gitignored). <em>Small platform PR, can land first.</em></p></div></div>
+
+  <div class="phase"><div class="pn">P2</div><div class="card"><h4>Loader</h4>
+    <dl class="kv">
+      <dt>new</dt><dd><code>propertyiq_getdata/db/__init__.py</code>, <code>db/connection.py</code> (URL from env, platform error message), <code>db/schema.py</code> (<code>db init</code> DDL: schemas, meta tables, grants, default privileges), <code>db/load.py</code> (manifest → COPY, <code>load_state</code>, row-count assert), <code>db/dbt.py</code> (URL → <code>DBT_*</code>, run <code>dbt seed/build/docs generate</code>, parse <code>run_results.json</code>), <code>db/runs.py</code> (<code>pipeline_runs</code> row).</dd>
+      <dt>changed</dt><dd><code>cli.py</code>: <code>db</code> group with <code>init | load | dbt | update | smoke</code>, flags <code>--dataset</code> (append) <code>--full-refresh</code> <code>--dry-run</code> <code>--data-dir</code>. <code>core/paths.py</code>: <code>manifest_paths()</code> helper listing the 4 manifests. <code>pyproject.toml</code>: extra <code>db = ["psycopg[binary]>=3.2", "dbt-core>=1.9", "dbt-postgres>=1.9"]</code>; <code>audit.py</code>: <code>db</code> section reading <code>meta.load_state</code>.</dd>
+      <dt>tests</dt><dd><code>tests/test_db_load.py</code> (fake cursor: plans, skips unchanged sha, deletes stale partitions, keeps snapshots, raises on row mismatch, header mismatch); <code>tests/test_db_cli.py</code>; <code>@pytest.mark.live</code> end-to-end into schema prefix <code>test_</code> on the central DB.</dd>
+    </dl></div></div>
+
+  <div class="phase"><div class="pn">P3</div><div class="card"><h4>dbt project — property staging</h4>
+    <p>Create <code>dbt/</code> per §05; port <code>stg_sales.sql</code>, <code>stg_rent.sql</code>, the geo seed, macros and the two staging tests from <code>data-qa-agent/services/data-pipeline/dbt</code> with a header comment naming the origin commit. Run <code>db update</code>; compare <code>count(*)</code> per year of <code>staging.property_sales</code> against <code>dataqa.staging.property_sales</code> (expected: propertyiq ≥ dataqa, because partitions include weeks the monolith may lack — record the delta in the PR).</p></div></div>
+
+  <div class="phase"><div class="pn">P4</div><div class="card"><h4>dbt project — econ staging</h4>
+    <p><code>stg_econ_series</code> (+ vintages), the <code>econ_headline_series.csv</code> seed and its integrity test. Check one number per dataset against the publisher (NSW mean price 2026-Q2 = $1 304.9k is already verified). Add the <code>db</code> section to <code>AGENTS.md</code>/<code>README.md</code>: naming convention, the "consumers import staging over FDW and own their marts" rule, run order, how to add a series; include a worked example query pivoting <code>econ_series</code> with the seed.</p></div></div>
+
+  <div class="phase"><div class="pn">P5</div><div class="card"><h4>Wire the weekly run</h4>
+    <p><code>scripts/update_data_and_push.sh</code>: after <code>uv run pytest</code> add <code>uv run --env-file .env propertyiq-getdata db update --data-dir data</code> . <code>uv sync</code> at the top becomes <code>uv sync --extra db</code>. Add <code>db export-fixture</code> (small staging extract for consumers' CI) in the same PR. The Google Drive push stays until P6 lands, then goes.</p></div></div>
+
+  <div class="phase"><div class="pn">P6</div><div class="card"><h4>data-qa-agent: decommission ingestion (companion PR in that repo)</h4>
+    <p>(1) run its old pipeline one last time; (2) Alembic migration: FDW server/mapping/import, drop <code>raw.*</code> after <code>make db-backup DB=dataqa</code>; (3) dbt: delete <code>stg_*</code>/seed, add the <code>propertyiq_staging</code> source, swap <code>ref → source</code> in the marts; (4) run <code>make pipeline</code>, diff <code>marts.*</code> counts per year against step 1, record deltas; (5) delete <code>ingest.py</code>, dlt/boto3 deps, samples, <code>/data</code> mount, S3 policy; (6) CI fixture from <code>db export-fixture</code>; (7) update its registry entry (<code>extensions: [vector, pgcrypto, postgres_fdw]</code>). Then in this repo: drop the Google Drive push and mark <code>nswgov_df.csv</code> / <code>rentboard_df.csv</code> legacy-only.</p></div></div>
+</section>
+
+<!-- ───────────────────────── 9 RISKS ───────────────────────── -->
+<section id="risks">
+  <h2><span class="snum">09</span>Risks, failure modes, compatibility</h2>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>risk</th><th>likelihood</th><th>mitigation</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Mart deltas vs data-qa-agent</strong> — partitions and the monolith are not guaranteed identical (the monolith was built by <code>migrate-legacy</code> from older runs).</td><td><span class="pill amber">likely, small</span></td><td>P3 records counts per year for both builds; any difference must be explainable (missing weeks in the monolith, re-transformed partitions). Cleaning SQL is identical, so differences come only from input rows.</td></tr>
+      <tr><td><strong>Full-refresh cost</strong> — someone runs <code>--full-refresh</code> on sales: 594 MB COPY + dbt rebuild.</td><td><span class="pill grey">rare</span></td><td>~5 min locally; acceptable. Flag prints the plan first under <code>--dry-run</code>.</td></tr>
+      <tr><td><strong>dbt rebuilds every table every run</strong> (tables, not incremental) — <code>percentile_cont</code> over 3 M rows.</td><td><span class="pill amber">certain, tolerable</span></td><td>Same as today in data-qa-agent (~minutes). If it bites, switch <code>staging.property_*</code> to <code>incremental</code> on <code>_partition</code> later; the loader already tells us which partitions changed.</td></tr>
+      <tr><td><strong>FDW performance</strong> in dataqa</td><td><span class="pill grey">low</span></td><td>dataqa materialises local copies; FDW is only crossed during its dbt build. <code>fetch_size</code> option raised to 10 000.</td></tr>
+      <tr><td><strong>Vintage growth</strong> — 11 snapshots × every ABS/RBA release ≈ +80k rows/week at most.</td><td><span class="pill grey">low</span></td><td>Only when content changes (dedupe already in <code>write_snapshot_if_changed</code>). Tens of MB per year.</td></tr>
+      <tr><td><strong>Raw header drift</strong> (ABS adds a dimension, NSW changes .DAT layout)</td><td><span class="pill grey">low</span></td><td>Hard error by design; fix is a migration in <code>db/schema.py</code> + <code>--full-refresh --dataset X</code>.</td></tr>
+      <tr><td><strong>FDW build cost in dataqa</strong> — its <code>dbt build</code> now pulls ~6.5 M staging rows across the FDW every run.</td><td><span class="pill amber">certain, tolerable</span></td><td>Sequential scan pushed down, <code>fetch_size 10000</code>; minutes, same order as today's dlt reload which it replaces. If it grows, materialise <code>staging.property_*</code> locally as an intermediate step.</td></tr>
+      <tr><td><strong>data-qa-agent CI loses its sample CSVs</strong></td><td><span class="pill amber">certain</span></td><td>Fixture <code>propertyiq</code> database in the D18 service container (§07). Its golden-question evals run against the fixture the same way they ran against samples.</td></tr>
+      <tr><td><strong>Secrets</strong> — DB URL in <code>.env</code>, FDW user-mapping password in dataqa</td><td><span class="pill grey">handled</span></td><td><code>.env</code> already gitignored; the platform's <code>.db-urls.env</code> is the source; <code>propertyiq_ro</code> is read-only.</td></tr>
+      <tr><td><strong>Databricks sink still in the package</strong> (<code>sinks/databricks.py</code>, <code>databricks-sdk</code> dep)</td><td><span class="pill grey">n/a</span></td><td>Out of scope; untouched. Could move to <code>archive/</code> in a later cleanup since that project has ended.</td></tr>
+    </tbody></table></div>
+</section>
+
+<!-- ───────────────────────── 10 DECISIONS ───────────────────────── -->
+<section id="decisions">
+  <h2><span class="snum">10</span>Decisions — resolved 2026-09-22</h2>
+  <p class="sec-sub">Reviewed in Lavish; the plan above reflects every choice. Build authorised ("okay run the build").</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>id</th><th>question</th><th>decision</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">D1</td><td>Destination</td><td>New database <code>propertyiq</code> on the central Postgres; consumers read via <code>postgres_fdw</code>.</td></tr>
+      <tr><td class="mono">D2</td><td>Loader</td><td>Manifest-driven psycopg <code>COPY</code> loader in <code>propertyiq_getdata/db/</code>: skip unchanged sha256, replace changed partitions, append snapshots.</td></tr>
+      <tr><td class="mono">D3</td><td>Econ shape</td><td>Long <code>staging.econ_series</code> + <code>econ_series_vintages</code> + curated <code>econ_headline_series</code> seed. Wide marts are app-side (pattern documented in §03).</td></tr>
+      <tr><td class="mono">D4</td><td>Vintages</td><td>Load every <code>asof</code> snapshot into raw; staging exposes latest and all.</td></tr>
+      <tr><td class="mono">D5</td><td>Scope</td><td>All six phases, including the data-qa-agent companion PR.</td></tr>
+      <tr><td class="mono">D6</td><td>Census</td><td>Deferred until the <code>abs</code> source has been run; the loader is generic.</td></tr>
+      <tr><td class="mono">D7</td><td>Ownership split</td><td>propertyiq owns raw + staging (shared, app-agnostic); data-qa-agent keeps its own marts + RLS built by its own dbt from <code>propertyiq_staging</code>; its dlt ingest, CSV/S3 inputs and samples are decommissioned.</td></tr>
+    </tbody></table></div>
+</section>
+
+</main>
+<footer><div class="foot-inner">
+  <div>Sources read: <span class="src">data/manifests/*.csv · propertyiq_getdata/core/{snapshot,series,manifest,paths}.py · scripts/update_data_and_push.sh · data-qa-agent/services/data-pipeline/{ingest.py,run.py,dbt/**} · nmp-central-ai/{PLATFORM.md,registry/projects.yaml,scripts/db_init.py,.db-urls.env} · Postgres 16.14 pg_available_extensions</span></div>
+  <div style="margin-top:6px">Design: reuses the s02 plan's tokens/type (IBM Plex) so the repo's plans read as one series; the repo itself has no UI to mirror.</div>
+</div></footer>
+
+<script>
+  (function(){
+    var btn=document.getElementById('themeBtn');
+    if(btn){btn.addEventListener('click',function(){
+      var cur=document.documentElement.getAttribute('data-theme');
+      var next=cur==='dark'?'light':'dark';
+      document.documentElement.setAttribute('data-theme',next);
+      try{localStorage.setItem('s03-theme',next)}catch(e){}
+    });}
+  })();
+  function mark(id){var s=document.getElementById('qs-'+id);if(s){s.textContent='queued for agent';s.className='qstate on';}}
+  function qd(ev,id,title){
+    ev.preventDefault();
+    var f=ev.currentTarget;var v=new FormData(f).get('a');if(!v)return;
+    if(window.lavish&&window.lavish.queuePrompt){
+      window.lavish.queuePrompt('Decision '+id+' ('+title+'): '+v,{tag:'decision',text:id+': '+v,element:f,queueKey:id,data:{question:id,answer:v}});
+    }
+    mark(id);
+  }
+  function qg(ev){
+    ev.preventDefault();
+    var f=ev.currentTarget;var n=(new FormData(f).get('notes')||'').trim();
+    var msg='Proceed with the db-pipeline build using the queued D1–D7 selections (defaults where not queued).'+(n?' Notes: '+n:'');
+    if(window.lavish&&window.lavish.queuePrompt){
+      window.lavish.queuePrompt(msg,{tag:'go',text:'Proceed with build',element:f,queueKey:'GO',data:{notes:n}});
+    }
+    mark('GO');
+  }
+</script>
+</body>
+</html>
