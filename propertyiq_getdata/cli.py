@@ -152,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     db_stages.add_parser("smoke", parents=[data_parent], help="Zero-LLM check as the read-only role (platform `make check`).")
     db_fixture = db_stages.add_parser("export-fixture", parents=[data_parent], help="Small staging SQL fixture for consumers' CI.")
     db_fixture.add_argument("--out", default="tests/fixtures/db/propertyiq_staging.sql")
-    db_fixture.add_argument("--limit", type=int, default=500)
+    db_fixture.add_argument("--limit", type=int, default=2000)
 
     return parser
 

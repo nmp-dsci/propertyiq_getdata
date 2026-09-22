@@ -239,11 +239,17 @@ FIXTURE_TABLES = (
 )
 
 
-def export_fixture(out: str | Path, *, limit: int = 500, log=print) -> Path:
+def export_fixture(out: str | Path, *, limit: int = 2000, log=print) -> Path:
     """A small SQL fixture of ``staging`` for consumers' CI (plan §07): DDL + COPY blocks.
 
     Rows are the newest ``limit`` per table so a consumer's freshness tests
-    still pass against the fixture.
+    still pass against the fixture. 500 was too narrow a slice: the newest
+    500 ``property_sales``/``property_rent`` rows fall inside a single ~10-day
+    window, so a consumer mart that joins sales to rent at postcode x type x
+    month (e.g. data-qa-agent's ``mart_property_yield``) sees almost no
+    cell clear a >=5-row volume floor and its coverage test fails (verified:
+    500 -> 1 postcode clears it, 2000 -> 45). 2000 keeps several weeks in
+    frame with margin.
     """
 
     from psycopg import sql
