@@ -116,7 +116,7 @@ def main() -> None:
     ):
         for dataset, where, measure, adjustment in RULES:
             cur.execute(
-                f"select distinct series_id, {measure}, region, {adjustment}, freq, unit, series_label "  # noqa: S608
+                f"select distinct series_id, {measure}, region, {adjustment}, freq, unit, series_label "
                 f"from raw.abs_ts_{dataset} where {where} and asof = (select max(asof) from raw.abs_ts_{dataset}) "
                 "order by 1"
             )
@@ -137,7 +137,7 @@ def main() -> None:
                 )
         for table in ("rba_cash_rate", "rba_lending_rates", "rba_rate_changes"):
             cur.execute(
-                f"select distinct series_id, freq, unit, series_label from raw.{table} "  # noqa: S608
+                f"select distinct series_id, freq, unit, series_label from raw.{table} "
                 f"where asof = (select max(asof) from raw.{table}) order by 1"
             )
             for series_id, freq, unit, label in cur.fetchall():
